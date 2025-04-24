@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Error Details{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between mb-3">
+        <h2>Error Details</h2>
+        <a href="{% url 'error_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+
+    <div class="row">
+        <!-- Error Information Card -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Error Information</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless">
+                        <tr>
+                            <th>Error Code:</th>
+                            <td class="text-danger"><strong>{{ error.error_code }}</strong></td>
+                        </tr>
+                        <tr>
+                            <th>Line Number:</th>
+                            <td>{{ error.line_number }}</td>
+                        </tr>
+                        <tr>
+                            <th>Message:</th>
+                            <td>{{ error.message }}</td>
+                        </tr>
+                        <tr>
+                            <th>Severity:</th>
+                            <td>
+                                <span class="badge bg-{% if error.severity == 'critical' %}danger{% elif error.severity == 'high' %}warning{% elif error.severity == 'medium' %}info{% else %}secondary{% endif %}">
+                                    {{ error.get_severity_display }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Status:</th>
+                            <td>
+                                <span class="badge bg-{% if error.status == 'pending' %}warning{% elif error.status == 'in_progress' %}info{% elif error.status == 'resolved' %}success{% else %}secondary{% endif %}">
+                                    {{ error.get_status_display }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>XML File:</th>
+                            <td>{{ error.xml_file_name }}</td>
+                        </tr>
+                        <tr>
+                            <th>Created At:</th>
+                            <td>{{ error.created_at|date:"d/m/Y H:i:s" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Uploaded By:</th>
+                            <td>{{ error.uploaded_by.get_full_name }}</td>
+                        </tr>
+                        {% if error.resolved_by %}
+                        <tr>
+                            <th>Resolved By:</th>
+                            <td>{{ error.resolved_by.get_full_name }} ({{ error.resolved_at|date:"d/m/Y H:i:s" }})</td>
+                        </tr>
+                        {% endif %}
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Customer Information Card -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="card-title mb-0">Customer Information</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless">
+                        <tr>
+                            <th>Identifier:</th>
+                            <td>{{ error.identifier }}</td>
+                        </tr>
+                        <tr>
+                            <th>Customer Name:</th>
+                            <td>{{ error.customer_name }}</td>
+                        </tr>
+                        <tr>
+                            <th>Account Number:</th>
+                            <td>{{ error.account_number }}</td>
+                        </tr>
+                        <tr>
+                            <th>National ID:</th>
+                            <td>{{ error.national_id }}</td>
+                        </tr>
+                        <tr>
+                            <th>Amount:</th>
+                            <td>{{ error.amount|floatformat:2 }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mismatch Details Card -->
+    {% if error.customer_details %}
+    <div class="card mb-4">
+        <div class="card-header bg-danger text-white">
+            <h5 class="card-title mb-0">Data Mismatch Details</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for key, value in error.customer_details.items %}
+                        <tr>
+                            <td><strong>{{ key }}</strong></td>
+                            <td>{{ value }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Notes & Update Status Form -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Update Status</h5>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{% url 'update_error_status' error.id %}">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="status" class="form-label">Status</label>
+                    <select class="form-select" name="status" id="status">
+                        <option value="pending" {% if error.status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="in_progress" {% if error.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                        <option value="resolved" {% if error.status == 'resolved' %}selected{% endif %}>Resolved</option>
+                        <option value="ignored" {% if error.status == 'ignored' %}selected{% endif %}>Ignored</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="4">{{ error.notes }}</textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Update Status</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

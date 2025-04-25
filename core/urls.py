@@ -5,7 +5,10 @@ from django.contrib.auth.decorators import login_required
 from core import views
 
 urlpatterns = [
-    path('', login_required(views.home), name='home'),
+    # Main dashboard - now points to customer_error_dashboard
+    path('', login_required(views.customer_error_dashboard), name='customer_error_dashboard'),
+    
+    # Auth related paths
     path('login/', auth_views.LoginView.as_view(
         template_name='login.html',
         redirect_authenticated_user=True
@@ -15,10 +18,10 @@ urlpatterns = [
     path('password-reset/', auth_views.PasswordResetView.as_view(
         template_name='password_reset.html'
     ), name='password_reset'),
-    path('upload_report/', views.upload_report, name='upload_report'),
-    path('error_dashboard/', views.error_dashboard, name='error_dashboard'),
-    path('update_error_status/<int:error_id>/', views.update_error_status, name='update_error_status'),
-    path('error/<int:error_id>/', views.error_detail, name='error_detail'),
-    path('error/<int:error_id>/update/', views.update_error_status, name='update_error_status'),
     
+    # File upload path
+    path('upload/', views.upload_both_files, name='upload_both_files'),
+    
+    # Original dashboard path (if you still need it)
+    path('dashboard/', login_required(views.error_dashboard), name='error_dashboard'),
 ]

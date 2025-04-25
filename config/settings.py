@@ -127,7 +127,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Add these settings at the bottom of your settings.py
 LOGIN_URL = 'login'
-LOGIN_REDIRECT_URL = 'home'
+LOGIN_REDIRECT_URL = 'customer_error_dashboard'  # Redirect to the main dashboard after login
 LOGOUT_REDIRECT_URL = 'login.html'
 # Session expires after 3 minutes of inactivity
 SESSION_COOKIE_AGE = 180  # 3 minutes in seconds

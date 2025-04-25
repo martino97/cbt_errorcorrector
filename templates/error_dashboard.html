@@ -1,0 +1,290 @@
+{% extends 'base.html' %}
+
+{% load static %}
+
+{% block title %}Error Dashboard{% endblock %}
+
+{% block content %}
+<!-- Page Heading -->
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Error Dashboard</h1>
+    <a href="{% url 'upload_both_files' %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-upload fa-sm text-white-50"></i> Upload Files
+    </a>
+</div>
+
+<!-- Display current upload statistics if available -->
+{% if current_upload.error_count > 0 %}
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <strong>Upload Complete!</strong> Processed {{ current_upload.customer_count }} customer records and added {{ current_upload.current_upload_errors }} new errors.
+    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+        <span aria-hidden="true">&times;</span>
+    </button>
+</div>
+{% endif %}
+
+<div class="row">
+    <!-- Total Errors Card (Links to All Errors) -->
+    <div class="col-xl-4 col-md-4 mb-4">
+        <a href="?status=all" class="text-decoration-none">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                                Total Errors</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ error_stats.total }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <span class="btn btn-danger btn-circle">
+                                <i class="fas fa-exclamation-circle"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Pending Errors Card -->
+    <div class="col-xl-4 col-md-4 mb-4">
+        <a href="?status=pending" class="text-decoration-none">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Pending Errors</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ error_stats.pending }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <span class="btn-warning btn-circle">
+                                <i class="fas fa-clock"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Resolved Errors Card -->
+    <div class="col-xl-4 col-md-4 mb-4">
+        <a href="?status=resolved" class="text-decoration-none">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Resolved Errors</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ error_stats.resolved }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <span class="btn-success btn-circle">
+                                <i class="fas fa-check"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+ <!-- Content Row -->
+ <div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Error Dashboard</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Identifier</th>
+                        <th>Customer Name</th>
+                        <th>Phone</th>
+                        <th>Loan Amount</th>
+                        <th>Error Code</th>
+                        <th>Error Message</th>
+                        <!-- <th>Severity</th> -->
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tfoot>
+                    <tr>
+                        <th>Identifier</th>
+                        <th>Customer Name</th>
+                        <th>Phone</th>
+                        <th>Loan Amount</th>
+                        <th>Error Code</th>
+                        <th>Error Message</th>
+                        <!-- <th>Severity</th> -->
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </tfoot>
+                <tbody>
+                    {% for item in data %}
+                        <tr>
+                            <td>{{ item.error.identifier }}</td>
+                            <td>{{ item.submitted.trade_name|default:item.error.customer_name }}</td>
+                            <td>{{ item.submitted.phone|default:"-" }}</td>
+                            <td>{{ item.submitted.total_loan_amount|default:item.error.amount }}</td>
+                            <td>{{ item.error.error_code }}</td>
+                            <td>{{ item.error.message }}</td>
+                            <!-- <td>
+                                {% if item.error.severity == 'high' %}
+                                    <span class="badge badge-danger">High</span>
+                                {% elif item.error.severity == 'medium' %}
+                                    <span class="badge badge-warning">Medium</span>
+                                {% elif item.error.severity == 'low' %}
+                                    <span class="badge badge-info">Low</span>
+                                {% elif item.error.severity == 'critical' %}
+                                    <span class="badge badge-dark">Critical</span>
+                                {% else %}
+                                    <span class="badge badge-secondary">{{ item.error.get_severity_display }}</span>
+                                {% endif %}
+                            </td> -->
+                            <td>
+                                {% if item.error.status == 'pending' %}
+                                    <span class="badge badge-warning">Pending</span>
+                                {% elif item.error.status == 'resolved' %}
+                                    <span class="badge badge-success">Resolved</span>
+                                {% else %}
+                                    <span class="badge badge-secondary">{{ item.error.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button 
+                                    class="btn btn-sm status-btn {% if item.error.status == 'pending' %}btn-success{% else %}btn-warning{% endif %}" 
+                                    data-error-id="{{ item.error.id }}" 
+                                    data-status="{% if item.error.status == 'pending' %}resolved{% else %}pending{% endif %}">
+                                    {% if item.error.status == 'pending' %}
+                                        <i class="fas fa-check"></i> Mark Resolved
+                                    {% else %}
+                                        <i class="fas fa-undo"></i> Mark Pending
+                                    {% endif %}
+                                </button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Status Update Modal -->
+<div class="modal fade" id="statusModal" tabindex="-1" role="dialog" aria-labelledby="statusModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="statusModalLabel">Update Error Status</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="statusForm">
+                    <input type="hidden" id="errorId" name="error_id">
+                    <input type="hidden" id="statusValue" name="status">
+                    <div class="form-group">
+                        <label for="notes">Notes (Optional):</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                    </div>
+                </form>
+                <div id="statusUpdateMessage" class="alert" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveStatus">Save changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Page level plugins -->
+<script src="{% static 'vendor/datatables/jquery.dataTables.min.js' %}"></script>
+<script src="{% static 'vendor/datatables/dataTables.bootstrap4.min.js' %}"></script>
+
+<!-- Page level custom scripts -->
+<script src="{% static 'js/demo/datatables-demo.js' %}"></script>
+
+<script>
+    $(document).ready(function() {
+        // Setup for status change buttons
+        $('.status-btn').on('click', function() {
+            const errorId = $(this).data('error-id');
+            const newStatus = $(this).data('status');
+            
+            // Populate modal
+            $('#errorId').val(errorId);
+            $('#statusValue').val(newStatus);
+            
+            // Update modal title and button based on status
+            if (newStatus === 'resolved') {
+                $('#statusModalLabel').text('Resolve Error');
+                $('#saveStatus').removeClass('btn-warning').addClass('btn-success').text('Mark as Resolved');
+            } else {
+                $('#statusModalLabel').text('Reset to Pending');
+                $('#saveStatus').removeClass('btn-success').addClass('btn-warning').text('Mark as Pending');
+            }
+            
+            // Show modal
+            $('#statusModal').modal('show');
+        });
+        
+        // Handle status update submission
+        $('#saveStatus').on('click', function() {
+            const formData = $('#statusForm').serialize();
+            
+            $.ajax({
+                url: "{% url 'customer_error_dashboard' %}",
+                type: "POST",
+                data: formData,
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest",
+                    "X-CSRFToken": "{{ csrf_token }}"
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#statusUpdateMessage')
+                            .removeClass('alert-danger')
+                            .addClass('alert-success')
+                            .text('Status updated successfully!')
+                            .show();
+                            
+                        // Reload the page after a short delay
+                        setTimeout(function() {
+                            location.reload();
+                        }, 1000);
+                    } else {
+                        $('#statusUpdateMessage')
+                            .removeClass('alert-success')
+                            .addClass('alert-danger')
+                            .text('Failed to update status: ' + response.message)
+                            .show();
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = 'An error occurred while updating the status.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    
+                    $('#statusUpdateMessage')
+                        .removeClass('alert-success')
+                        .addClass('alert-danger')
+                        .text(errorMsg)
+                        .show();
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

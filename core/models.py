@@ -74,3 +74,16 @@ class CustomerError(models.Model):
     def get_severity_display(self):
         """Returns the display value for the severity field."""
         return dict(self.SEVERITY_CHOICES).get(self.severity, self.severity)
+    
+class SubmittedCustomerData(models.Model):
+    identifier = models.CharField(max_length=100, unique=True)
+    trade_name = models.CharField(max_length=255)
+    registration_number = models.CharField(max_length=100)
+    customer_code = models.CharField(max_length=100)
+    phone = models.CharField(max_length=20)
+    total_loan_amount = models.DecimalField(max_digits=20, decimal_places=4)
+    submitted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.identifier} - {self.trade_name}"

@@ -1,5 +1,8 @@
-from django.db import models
 from django.contrib.auth.models import User
+from django.db import models
+
+import json
+
 
 class CustomerError(models.Model):
     STATUS_CHOICES = (
@@ -27,6 +30,12 @@ class CustomerError(models.Model):
     severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default='medium')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     notes = models.TextField(blank=True)
+    # friendly_message = models.TextField(blank=True, null=True) 
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    xml_file_name = models.CharField(max_length=255, blank=True, null=True)
+    customer_details = models.JSONField(default=dict, blank=True)
+    # upload_session = models.CharField(max_length=255, blank=True, null=True)
+    
 
     # JSON fields for additional customer data
     customer_details = models.JSONField(
@@ -74,6 +83,18 @@ class CustomerError(models.Model):
     def get_severity_display(self):
         """Returns the display value for the severity field."""
         return dict(self.SEVERITY_CHOICES).get(self.severity, self.severity)
+        
+    def get_customer_details_display(self):
+        """Return customer details as a dictionary."""
+        if not self.customer_details:
+            return {}
+        
+        if isinstance(self.customer_details, str):
+            try:
+                return json.loads(self.customer_details)
+            except json.JSONDecodeError:
+                return {'error': 'Invalid JSON format'}
+        return self.customer_details
     
 class SubmittedCustomerData(models.Model):
     identifier = models.CharField(max_length=100, unique=True)
@@ -87,3 +108,18 @@ class SubmittedCustomerData(models.Model):
 
     def __str__(self):
         return f"{self.identifier} - {self.trade_name}"
+
+class RecentUpload(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    filename = models.CharField(max_length=255)
+    customer_count = models.IntegerField(default=0)
+    error_count = models.IntegerField(default=0)
+    error_ids = models.JSONField()
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.filename} - {self.timestamp}"

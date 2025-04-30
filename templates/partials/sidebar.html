@@ -13,8 +13,8 @@
     <hr class="sidebar-divider my-0">
 
     <!-- Nav Item - Dashboard -->
-    <li class="nav-item {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
-        <a class="nav-link" href="{% url 'error_dashboard' %}">
+    <li class="nav-item">
+        <a class="nav-link" href="/">
             <i class="fas fa-fw fa-tachometer-alt"></i>
             <span>Dashboard</span>
         </a>
@@ -55,8 +55,8 @@
             data-parent="#accordionSidebar">
             <div class="bg-white py-2 collapse-inner rounded">
                 <h6 class="collapse-header">Batch History:</h6>
-                <a class="collapse-item" href="#">Batch 1</a>
-                <a class="collapse-item" href="#">Batch 2</a>
+                <a class="collapse-item" href="#">Current Errors</a>
+                <a class="collapse-item" href="#">Previously Errors</a>
             </div>
         </div>
     </li>
@@ -76,11 +76,11 @@
             <i class="fas fa-fw fa-comments"></i>
             <span>Help Desk</span>
         </a>
-        <div id="collapsePages" class="collapse" aria-labelledby="headingPages" data-parent="#accordionSidebar">
+        <div id="collapsePages" class="collapse {% if 'documentation' in request.path %}show{% endif %}" aria-labelledby="headingPages" data-parent="#accordionSidebar">
             <div class="bg-white py-2 collapse-inner rounded">
                 <h6 class="collapse-header">Desk Details:</h6>
-                <a class="collapse-item" href="#">Documentation</a>
-                <a class="collapse-item" href="#">Ask For Assistance</a>
+               <a class="collapse-item active" href="{% url 'documentation' %}">Documentation</a>
+                <a class="collapse-item" href="#">Generate Report</a>
                 <div class="collapse-divider"></div>
             </div>
         </div>

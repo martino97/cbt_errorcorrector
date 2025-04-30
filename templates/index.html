@@ -100,19 +100,18 @@
             </div>
 
             <!-- Nav Item - Pages Collapse Menu -->
-            <li class="nav-item">
+            <li class="nav-item {% if 'documentation' in request.path %}active{% endif %}">
                 <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapsePages"
-                    aria-expanded="true" aria-controls="collapsePages">
+                    aria-expanded="{% if 'documentation' in request.path %}true{% else %}false{% endif %}" aria-controls="collapsePages">
                     <i class="fas fa-fw fa-comments"></i>
                     <span>Help Desk</span>
                 </a>
-                <div id="collapsePages" class="collapse" aria-labelledby="headingPages" data-parent="#accordionSidebar">
+                <div id="collapsePages" class="collapse {% if 'documentation' in request.path %}show{% endif %}" aria-labelledby="headingPages" data-parent="#accordionSidebar">
                     <div class="bg-white py-2 collapse-inner rounded">
                         <h6 class="collapse-header">Desk Details:</h6>
-                        <a class="collapse-item" href="login.html">Documentation</a>
-                        <a class="collapse-item" href="register.html">Ask For Assistance</a>
+                       <a class="collapse-item active" href="{% url 'documentation' %}">Documentation</a>
+                        <a class="collapse-item" href="#">Generate Report</a>
                         <div class="collapse-divider"></div>
-        
                     </div>
                 </div>
             </li>

@@ -1,8 +1,7 @@
-from django.contrib import admin
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
-from core import views
+from . import views
 
 urlpatterns = [
     # Main dashboard - now points to customer_error_dashboard
@@ -24,4 +23,6 @@ urlpatterns = [
     
     # Original dashboard path (if you still need it)
     path('dashboard/', login_required(views.error_dashboard), name='error_dashboard'),
+    
+    path('documentation/', login_required(views.documentation_view), name='documentation'),
 ]

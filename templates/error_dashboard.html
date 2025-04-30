@@ -25,7 +25,7 @@
 
 <div class="row">
     <!-- Total Errors Card (Links to All Errors) -->
-    <div class="col-xl-4 col-md-4 mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
         <a href="?status=all" class="text-decoration-none">
             <div class="card border-left-danger shadow h-100 py-2">
                 <div class="card-body">
@@ -47,7 +47,7 @@
     </div>
 
     <!-- Pending Errors Card -->
-    <div class="col-xl-4 col-md-4 mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
         <a href="?status=pending" class="text-decoration-none">
             <div class="card border-left-warning shadow h-100 py-2">
                 <div class="card-body">
@@ -69,7 +69,7 @@
     </div>
 
     <!-- Resolved Errors Card -->
-    <div class="col-xl-4 col-md-4 mb-4">
+    <div class="col-xl-3 col-md-6 mb-4 ">
         <a href="?status=resolved" class="text-decoration-none">
             <div class="card border-left-success shadow h-100 py-2">
                 <div class="card-body">
@@ -82,6 +82,27 @@
                         <div class="col-auto">
                             <span class="btn-success btn-circle">
                                 <i class="fas fa-check"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <!-- Recently Uploaded Errors -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <a href="#" class="text-decoration-none recent-errors-trigger">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Recent Errors</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ current_upload.error_count|default:"0" }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <span class="border-left-info btn-circle">
+                                <i class="fas fa-upload"></i>
                             </span>
                         </div>
                     </div>
@@ -133,7 +154,18 @@
                             <td>{{ item.submitted.phone|default:"-" }}</td>
                             <td>{{ item.submitted.total_loan_amount|default:item.error.amount }}</td>
                             <td>{{ item.error.error_code }}</td>
-                            <td>{{ item.error.message }}</td>
+                            <!-- <td>{{ item.error.message }}</td> -->
+                            <td>
+                                <div>{{ item.error.message }}</div>
+                                {% if item.error.friendly_message %}
+                                    <div class="text-info mt-2">
+                                        <small>
+                                            <i class="fas fa-info-circle"></i> 
+                                            {{ item.error.friendly_message }}
+                                        </small>
+                                    </div>
+                                {% endif %}
+                            </td>
                             <!-- <td>
                                 {% if item.error.severity == 'high' %}
                                     <span class="badge badge-danger">High</span>
@@ -172,6 +204,98 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Upload Section -->
+<div class="collapse" id="recentUploadsSection">
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Recent Upload Details</h6>
+            <button type="button" class="close" data-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+        <div class="card-body">
+            {% if current_upload.timestamp %}
+                <div class="table-responsive">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Identifier</th>
+                                <th>Customer Name</th>
+                                <th>Phone</th>
+                                <th>Loan Amount</th>
+                                <th>Error Code</th>
+                                <th>Error Message</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in current_upload.recent_errors %}
+                            <tr>
+                                <td>{{ item.error.identifier }}</td>
+                                <td>
+                                    {% if item.submitted %}
+                                        {{ item.submitted.trade_name }}
+                                    {% else %}
+                                        {{ item.error.customer_name|default:"Unknown" }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.submitted %}
+                                        {{ item.submitted.phone }}
+                                    {% else %}
+                                        {{ item.error.customer_details.phone|default:"-" }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.submitted %}
+                                        {{ item.submitted.total_loan_amount|floatformat:2 }}
+                                    {% else %}
+                                        {{ item.error.amount|floatformat:2|default:"0.00" }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge badge-warning">{{ item.error.error_code }}</span>
+                                </td>
+                                <td>
+                                    <div>{{ item.error.message }}</div>
+                                    {% if item.friendly_message %}
+                                        <div class="text-info mt-2">
+                                            <small>
+                                                <i class="fas fa-info-circle"></i> 
+                                                {{ item.friendly_message }}
+                                            </small>
+                                        </div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge badge-{{ item.error.status|yesno:'success,warning' }}">
+                                        {{ item.error.get_status_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button 
+                                        class="btn btn-sm btn-secondary" 
+                                        disabled
+                                        title="View only in recent errors">
+                                        <i class="fas fa-lock"></i> View Only
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center text-muted">
+                    <i class="fas fa-info-circle fa-2x mb-3"></i>
+                    <p>No recent uploads available</p>
+                </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -216,75 +340,95 @@
 <script src="{% static 'js/demo/datatables-demo.js' %}"></script>
 
 <script>
-    $(document).ready(function() {
-        // Setup for status change buttons
-        $('.status-btn').on('click', function() {
-            const errorId = $(this).data('error-id');
-            const newStatus = $(this).data('status');
-            
-            // Populate modal
-            $('#errorId').val(errorId);
-            $('#statusValue').val(newStatus);
-            
-            // Update modal title and button based on status
-            if (newStatus === 'resolved') {
-                $('#statusModalLabel').text('Resolve Error');
-                $('#saveStatus').removeClass('btn-warning').addClass('btn-success').text('Mark as Resolved');
-            } else {
-                $('#statusModalLabel').text('Reset to Pending');
-                $('#saveStatus').removeClass('btn-success').addClass('btn-warning').text('Mark as Pending');
-            }
-            
-            // Show modal
-            $('#statusModal').modal('show');
-        });
+$(document).ready(function() {
+    // Setup for status change buttons
+    $('.status-btn').on('click', function() {
+        const errorId = $(this).data('error-id');
+        const newStatus = $(this).data('status');
         
-        // Handle status update submission
-        $('#saveStatus').on('click', function() {
-            const formData = $('#statusForm').serialize();
-            
-            $.ajax({
-                url: "{% url 'customer_error_dashboard' %}",
-                type: "POST",
-                data: formData,
-                headers: {
-                    "X-Requested-With": "XMLHttpRequest",
-                    "X-CSRFToken": "{{ csrf_token }}"
-                },
-                success: function(response) {
-                    if (response.success) {
-                        $('#statusUpdateMessage')
-                            .removeClass('alert-danger')
-                            .addClass('alert-success')
-                            .text('Status updated successfully!')
-                            .show();
-                            
-                        // Reload the page after a short delay
-                        setTimeout(function() {
-                            location.reload();
-                        }, 1000);
-                    } else {
-                        $('#statusUpdateMessage')
-                            .removeClass('alert-success')
-                            .addClass('alert-danger')
-                            .text('Failed to update status: ' + response.message)
-                            .show();
-                    }
-                },
-                error: function(xhr) {
-                    let errorMsg = 'An error occurred while updating the status.';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMsg = xhr.responseJSON.message;
-                    }
-                    
+        // Populate modal
+        $('#errorId').val(errorId);
+        $('#statusValue').val(newStatus);
+        
+        // Update modal title and button based on status
+        if (newStatus === 'resolved') {
+            $('#statusModalLabel').text('Resolve Error');
+            $('#saveStatus').removeClass('btn-warning').addClass('btn-success').text('Mark as Resolved');
+        } else {
+            $('#statusModalLabel').text('Reset to Pending');
+            $('#saveStatus').removeClass('btn-success').addClass('btn-warning').text('Mark as Pending');
+        }
+        
+        // Show modal
+        $('#statusModal').modal('show');
+    });
+    
+    // Handle status update submission
+    $('#saveStatus').on('click', function() {
+        const formData = $('#statusForm').serialize();
+        
+        $.ajax({
+            url: "{% url 'customer_error_dashboard' %}",
+            type: "POST",
+            data: formData,
+            headers: {
+                "X-Requested-With": "XMLHttpRequest",
+                "X-CSRFToken": "{{ csrf_token }}"
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('#statusUpdateMessage')
+                        .removeClass('alert-danger')
+                        .addClass('alert-success')
+                        .text('Status updated successfully!')
+                        .show();
+                        
+                    // Reload the page after a short delay
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1000);
+                } else {
                     $('#statusUpdateMessage')
                         .removeClass('alert-success')
                         .addClass('alert-danger')
-                        .text(errorMsg)
+                        .text('Failed to update status: ' + response.message)
                         .show();
                 }
-            });
+            },
+            error: function(xhr) {
+                let errorMsg = 'An error occurred while updating the status.';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                
+                $('#statusUpdateMessage')
+                    .removeClass('alert-success')
+                    .addClass('alert-danger')
+                    .text(errorMsg)
+                    .show();
+            }
         });
     });
+    
+    // Handle Recent Errors card click
+    $('.recent-errors-trigger').on('click', function(e) {
+        e.preventDefault();
+        $('#recentUploadsSection').collapse('toggle');
+        
+        // Scroll to the recent uploads section if it's being shown
+        if (!$('#recentUploadsSection').hasClass('show')) {
+            $('html, body').animate({
+                scrollTop: $('#recentUploadsSection').offset().top - 20
+            }, 500);
+        }
+    });
+    
+    // Optional: Close the section when clicking outside
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('#recentUploadsSection, .recent-errors-trigger').length) {
+            $('#recentUploadsSection').collapse('hide');
+        }
+    });
+});
 </script>
 {% endblock %}

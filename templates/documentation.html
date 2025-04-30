@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Heading -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Documentation</h1>
+    </div>
+
+    <!-- Documentation Content -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Field Validation Rules</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Field Name</th>
+                            <th>Rules</th>
+                            <th>Simple Explanation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documentation_data %}
+                        <tr>
+                            <td><strong>{{ doc.field_name }}</strong></td>
+                            <td>{{ doc.rules }}</td>
+                            <td>{{ doc.regex_explanation }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Documentation -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Understanding Regular Expressions</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <!-- Your regex explanation cards -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

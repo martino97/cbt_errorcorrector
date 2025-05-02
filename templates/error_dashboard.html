@@ -290,6 +290,11 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="mt-3 text-center">  <!-- Changed from text-right to text-center -->
+                    <button id="generateRecentReport" class="btn btn-primary btn-lg">  <!-- Added btn-lg for better visibility -->
+                        <i class="fas fa-file-pdf mr-2"></i> Generate Report
+                    </button>
+                </div>
             {% else %}
                 <div class="text-center text-muted">
                     <i class="fas fa-info-circle fa-2x mb-3"></i>
@@ -338,6 +343,9 @@
 
 <!-- Page level custom scripts -->
 <script src="{% static 'js/demo/datatables-demo.js' %}"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.15/jspdf.plugin.autotable.min.js"></script>
 
 <script>
 $(document).ready(function() {
@@ -428,6 +436,61 @@ $(document).ready(function() {
         if (!$(e.target).closest('#recentUploadsSection, .recent-errors-trigger').length) {
             $('#recentUploadsSection').collapse('hide');
         }
+    });
+
+    $('#generateRecentReport').on('click', function() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // Add title
+        doc.setFontSize(16);
+        doc.text('Recent Errors Report', 14, 15);
+        doc.setFontSize(12);
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 25);
+
+        // Get table data
+        const tableData = [];
+        $('#recentUploadsSection table tbody tr').each(function() {
+            const rowData = [];
+            $(this).find('td').each(function(index) {
+                // Skip the actions column
+                if (index < 7) {
+                    rowData.push($(this).text().trim());
+                }
+            });
+            tableData.push(rowData);
+        });
+
+        // Define columns
+        const columns = [
+            'Identifier',
+            'Customer Name',
+            'Phone',
+            'Loan Amount',
+            'Error Code',
+            'Error Message',
+            'Status'
+        ];
+
+        // Generate table
+        doc.autoTable({
+            head: [columns],
+            body: tableData,
+            startY: 35,
+            margin: { top: 15 },
+            styles: { overflow: 'linebreak' },
+            columnStyles: {
+                4: { cellWidth: 30 }, // Error Code
+                5: { cellWidth: 'auto' }, // Error Message
+            },
+            headStyles: {
+                fillColor: [41, 128, 185],
+                textColor: 255
+            }
+        });
+
+        // Save the PDF
+        doc.save('recent-errors-report.pdf');
     });
 });
 </script>

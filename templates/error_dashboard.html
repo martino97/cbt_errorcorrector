@@ -11,7 +11,33 @@
     <a href="{% url 'upload_both_files' %}" class="btn btn-primary btn-sm">
         <i class="fas fa-upload fa-sm text-white-50"></i> Upload Files
     </a>
+    <a href="{% url 'upload_report' %}{% if current_batch %}?batch={{ current_batch }}{% endif %}" 
+       class="btn btn-primary btn-sm">
+        <i class="fas fa-download"></i> Download Report
+    </a>
 </div>
+
+<!-- After the page heading div -->
+{% if current_batch %}
+<div class="alert alert-info d-flex justify-content-between align-items-center mb-4">
+    <span>
+        <i class="fas fa-filter"></i> 
+        Showing errors for batch: <strong>{{ current_batch }}</strong>
+    </span>
+    <div>
+        <form method="post" action="{% url 'resolve_all_batch' %}" class="d-inline me-2">
+            {% csrf_token %}
+            <input type="hidden" name="batch_id" value="{{ current_batch }}">
+            <button type="submit" class="btn btn-success btn-sm">
+                <i class="fas fa-check-double"></i> Resolve All
+            </button>
+        </form>
+        <a href="{% url 'error_dashboard' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-times"></i> Clear Filter
+        </a>
+    </div>
+</div>
+{% endif %}
 
 <!-- Display current upload statistics if available -->
 {% if current_upload.error_count > 0 %}
@@ -128,7 +154,7 @@
                         <th>Loan Amount</th>
                         <th>Error Code</th>
                         <th>Error Message</th>
-                        <!-- <th>Severity</th> -->
+                        <th>Customer Code</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -141,7 +167,7 @@
                         <th>Loan Amount</th>
                         <th>Error Code</th>
                         <th>Error Message</th>
-                        <!-- <th>Severity</th> -->
+                        <th>Customer Code</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -154,7 +180,6 @@
                             <td>{{ item.submitted.phone|default:"-" }}</td>
                             <td>{{ item.submitted.total_loan_amount|default:item.error.amount }}</td>
                             <td>{{ item.error.error_code }}</td>
-                            <!-- <td>{{ item.error.message }}</td> -->
                             <td>
                                 <div>{{ item.error.message }}</div>
                                 {% if item.error.friendly_message %}
@@ -166,24 +191,17 @@
                                     </div>
                                 {% endif %}
                             </td>
-                            <!-- <td>
-                                {% if item.error.severity == 'high' %}
-                                    <span class="badge badge-danger">High</span>
-                                {% elif item.error.severity == 'medium' %}
-                                    <span class="badge badge-warning">Medium</span>
-                                {% elif item.error.severity == 'low' %}
-                                    <span class="badge badge-info">Low</span>
-                                {% elif item.error.severity == 'critical' %}
-                                    <span class="badge badge-dark">Critical</span>
-                                {% else %}
-                                    <span class="badge badge-secondary">{{ item.error.get_severity_display }}</span>
-                                {% endif %}
-                            </td> -->
+                            <td>{{ item.customer_code }}</td>
                             <td>
                                 {% if item.error.status == 'pending' %}
                                     <span class="badge badge-warning">Pending</span>
                                 {% elif item.error.status == 'resolved' %}
                                     <span class="badge badge-success">Resolved</span>
+                                    {% if item.error.resolved_at %}
+                                    <small class="d-block text-muted mt-1">
+                                        {{ item.error.resolved_at|date:"Y-m-d H:i" }}
+                                    </small>
+                                    {% endif %}
                                 {% else %}
                                     <span class="badge badge-secondary">{{ item.error.get_status_display }}</span>
                                 {% endif %}
@@ -229,6 +247,7 @@
                                 <th>Loan Amount</th>
                                 <th>Error Code</th>
                                 <th>Error Message</th>
+                                <th>Customer Code</th>  <!-- Add this line -->
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -272,6 +291,7 @@
                                         </div>
                                     {% endif %}
                                 </td>
+                                <td>{{ item.error.customer_code|default:"-" }}</td>  <!-- Add this line -->
                                 <td>
                                     <span class="badge badge-{{ item.error.status|yesno:'success,warning' }}">
                                         {{ item.error.get_status_display }}
@@ -418,17 +438,20 @@ $(document).ready(function() {
         });
     });
     
-    // Handle Recent Errors card click
+    // Handle Recent Errors triggers (both card and sidebar)
     $('.recent-errors-trigger').on('click', function(e) {
         e.preventDefault();
-        $('#recentUploadsSection').collapse('toggle');
         
-        // Scroll to the recent uploads section if it's being shown
-        if (!$('#recentUploadsSection').hasClass('show')) {
-            $('html, body').animate({
-                scrollTop: $('#recentUploadsSection').offset().top - 20
-            }, 500);
-        }
+        // Close the utilities collapse menu if it's open
+        $('#collapseUtilities').collapse('hide');
+        
+        // Show the recent uploads section
+        $('#recentUploadsSection').collapse('show');
+        
+        // Scroll to the section
+        $('html, body').animate({
+            scrollTop: $('#recentUploadsSection').offset().top - 20
+        }, 500);
     });
     
     // Optional: Close the section when clicking outside
@@ -454,7 +477,7 @@ $(document).ready(function() {
             const rowData = [];
             $(this).find('td').each(function(index) {
                 // Skip the actions column
-                if (index < 7) {
+                if (index < 8) {  // Update index to include Customer Code
                     rowData.push($(this).text().trim());
                 }
             });
@@ -469,6 +492,7 @@ $(document).ready(function() {
             'Loan Amount',
             'Error Code',
             'Error Message',
+            'Customer Code',  // Add this line
             'Status'
         ];
 
@@ -492,6 +516,46 @@ $(document).ready(function() {
         // Save the PDF
         doc.save('recent-errors-report.pdf');
     });
+
+    // Handle Error Status menu state
+    const status = new URLSearchParams(window.location.search).get('status');
+    if (status === 'pending' || status === 'resolved') {
+        $('#collapseTwo').collapse('show');
+    }
+
+    // Handle Generate Report click from Help Desk menu
+    $('#sidebarGenerateReport').on('click', function(e) {
+        e.preventDefault();
+        
+        // Show recent uploads section
+        $('#recentUploadsSection').collapse('show');
+        
+        // Close the help desk menu
+        $('#collapsePages').collapse('hide');
+        
+        // Small delay to ensure content is visible
+        setTimeout(function() {
+            // Trigger the generate report button
+            $('#generateRecentReport').click();
+        }, 100);
+    });
+    
+    // Add batch resolution confirmation
+    $('form[action="{% url "resolve_all_batch" %}"]').on('submit', function(e) {
+        if (!confirm('Are you sure you want to resolve all errors in this batch? This action cannot be undone.')) {
+            e.preventDefault();
+        }
+    });
+
+    // Refresh page after successful batch resolution
+    {% if messages %}
+        setTimeout(function() {
+            location.reload();
+        }, 1500);
+    {% endif %}
+    {% for message in messages %}
+        console.log("{{ message }}");
+    {% endfor %}
 });
 </script>
 {% endblock %}

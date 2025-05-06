@@ -6,16 +6,25 @@ from django.contrib.auth import login, authenticate
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.utils import timezone
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 import xml.etree.ElementTree as ET
 from io import BytesIO
 from .models import SubmittedCustomerData, CustomerError, RecentUpload
 import json
+from core import BOTXMLValidator
+from django.core.files.storage import FileSystemStorage
+import os
+from .validation_config import validation_dict, validation_dict_by_code, validate_xml_file
+from .models import BatchHistory
+import csv
+from datetime import datetime
+from django.db import transaction
+from django.db.models import Q  # Add this import
+from django.conf import settings  # Add this import
 
 # Create this function to handle friendly error messages
 def get_friendly_error_message(error_code, message=""):
     """Returns a user-friendly message based on the error code or message."""
-    # You can customize this logic based on your error codes or messages
     friendly_messages = {
         'E001': 'Customer information is incomplete. Please provide all required details.',
         'E002': 'The account number format is invalid. Please check and try again.',
@@ -30,10 +39,27 @@ def get_friendly_error_message(error_code, message=""):
     # Default friendly message if no specific mapping exists
     return "There was an issue with the submission. Our team is working to resolve it."
 
+# Add this helper function at the top of the file
+def get_batch_identifier(xml_content, is_customer_file=False):
+    """Extract batch identifier from XML Header block"""
+    try:
+        root = ET.fromstring(xml_content.decode('utf-8'))
+        if is_customer_file:
+            ns = {'ns': 'http://cb4.creditinfosolutions.com/BatchUploader/Batch'}
+            batch_id = root.find('.//ns:Header/ns:Identifier', ns)
+        else:
+            batch_id = root.find('.//Header/Identifier')
+            
+        if batch_id is None:
+            return None
+        return batch_id.text.strip()
+    except ET.ParseError:
+        return None
+
 
 @login_required
 def error_dashboard(request):
-    return render(request, 'dashbord.html')
+    return render(request, 'dashboard.html')
 
 def register_user(request):
     if request.user.is_authenticated:
@@ -71,7 +97,6 @@ def register_user(request):
     
     return render(request, 'register.html')
 
-
 @login_required
 def upload_both_files(request):
     if request.method == 'POST':
@@ -80,10 +105,55 @@ def upload_both_files(request):
         customer_count = 0
         error_count = 0
         current_errors = []  # Track errors from this upload session
+        customer_batch_id = None  # Initialize variable here
 
         # Clear session data about current upload
         if 'current_upload_errors' in request.session:
             del request.session['current_upload_errors']
+
+        # === Check Batch Identifiers ===
+        if customer_file and error_file:
+            try:
+                # Read customer file content
+                customer_content = customer_file.read()
+                if customer_content.startswith(b'\xef\xbb\xbf'):
+                    customer_content = customer_content[3:]
+                    
+                # Read error file content
+                error_content = error_file.read()
+                if error_content.startswith(b'\xef\xbb\xbf'):
+                    error_content = error_content[3:]
+
+                # Get batch identifiers from Header block
+                customer_batch_id = get_batch_identifier(customer_content, is_customer_file=True)
+                error_batch_id = get_batch_identifier(error_content)
+
+                # Check if identifiers were found in Header block
+                if not customer_batch_id:
+                    messages.error(request, "Could not find BatchIdentifier in customer file Header block. Example: TZ0230653")
+                    return render(request, 'upload_combined.html')
+                    
+                if not error_batch_id:
+                    messages.error(request, "Could not find BatchIdentifier in error file Header block. Example: TZ0230653")
+                    return render(request, 'upload_combined.html')
+
+                # Compare batch identifiers
+                if customer_batch_id != error_batch_id:
+                    messages.error(request, 
+                        f"Files cannot be processed - Batch identifiers in Header do not match!\n\n"
+                        f"Customer File Batch ID: {customer_batch_id}\n"
+                        f"Error File Batch ID: {error_batch_id}\n\n"
+                        f"Please ensure you are uploading files from the same batch (e.g., TZ0230653)."
+                    )
+                    return render(request, 'upload_combined.html')
+
+                # Reset file pointers for later processing
+                customer_file.seek(0)
+                error_file.seek(0)
+
+            except Exception as e:
+                messages.error(request, f"Error checking batch identifiers in Header block: {str(e)}")
+                return render(request, 'upload_combined.html')
 
         # === Process Customer File ===
         if customer_file:
@@ -132,6 +202,16 @@ def upload_both_files(request):
                 # Create a unique upload identifier
                 upload_session_id = f"upload_{request.user.id}_{timezone.now().strftime('%Y%m%d%H%M%S')}"
 
+                # Create batch history record first since we'll need it for foreign key references
+                batch_history = None
+                if customer_batch_id:  # Only create if we have a valid batch ID
+                    batch_history = BatchHistory.objects.create(
+                        batch_identifier=customer_batch_id,
+                        error_count=0,  # We'll update this later
+                        uploaded_by=request.user,
+                        filename=error_file.name
+                    )
+
                 for command in root.findall('.//Command'):
                     identifier = command.attrib.get('identifier', '')
                     customer_name = command.findtext('CustomerName') or ''
@@ -179,11 +259,18 @@ def upload_both_files(request):
                             status='pending'  # Only check pending errors to allow resolved ones to be recreated
                         ).first()
 
+                        # Store customer code from matching submitted data
+                        submitted_data = SubmittedCustomerData.objects.filter(identifier=identifier).first()
+                        customer_code = submitted_data.customer_code if submitted_data else ''
+
                         if not existing_error:
-                            # Create error without fields that don't exist in the database
+                            # Create error with customer code included
+                            # Ensure we use the batch history record created earlier
                             error = CustomerError.objects.create(
+                                batch=batch_history,  # Use the BatchHistory object created earlier
                                 identifier=identifier,
                                 customer_name=customer_name,
+                                customer_code=customer_code,  # Add customer code here
                                 account_number=account_number,
                                 amount=amount,
                                 national_id=national_id,
@@ -197,15 +284,21 @@ def upload_both_files(request):
                                 customer_details=customer_details
                             )
                             # Store friendly message in customer_details_json
-                            error.customer_details_json = {'friendly_message': friendly_message}
-                            error.save()
+                            if hasattr(error, 'customer_details_json'):
+                                error.customer_details_json = {'friendly_message': friendly_message}
+                                error.save()
                             
                             error_count += 1
                             current_errors.append(error.id)
                 
+                # Update batch history with final error count
+                if batch_history:
+                    batch_history.error_count = error_count
+                    batch_history.save()
+                
                 # Store current upload session errors in session
                 request.session['current_upload_errors'] = current_errors
-                  # Store the recent upload information in session
+                # Store the recent upload information in session
                 request.session['recent_upload'] = {
                     'timestamp': timezone.now().isoformat(),
                     'error_count': error_count,
@@ -222,18 +315,20 @@ def upload_both_files(request):
         # Create new recent upload record
         RecentUpload.objects.create(
             user=request.user,
-            filename=error_file.name,
+            filename=error_file.name if error_file else "No file",
             customer_count=customer_count,
             error_count=error_count,
             error_ids=current_errors,
             is_active=True
         )
 
+        # Note: We already created the batch history record earlier
+        # No need to create it again here
+
         messages.success(request, f"Upload completed. {customer_count} customer records and {error_count} errors saved.")
         return redirect('customer_error_dashboard')
 
     return render(request, 'upload_combined.html')
-
 #display documentation in the format of pdf documents
 @login_required
 def documentation_view(request):
@@ -558,6 +653,18 @@ def documentation_view(request):
     return render(request, 'documentation.html', context)
 @login_required
 def customer_error_dashboard(request):
+    # Add at the beginning of the view
+    # Clean up recent uploads if no errors exist
+    recent_upload = RecentUpload.objects.filter(user=request.user, is_active=True).first()
+    if recent_upload:
+        # Check if any of the stored error IDs still exist
+        existing_errors = CustomerError.objects.filter(id__in=recent_upload.error_ids).exists()
+        if not existing_errors:
+            # No errors exist anymore, delete the recent upload record
+            recent_upload.delete()
+            if 'recent_upload' in request.session:
+                del request.session['recent_upload']
+
     # Handle the status update
     if request.method == 'POST' and 'error_id' in request.POST and 'status' in request.POST:
         error_id = request.POST.get('error_id')
@@ -617,16 +724,21 @@ def customer_error_dashboard(request):
         if key not in unique_errors:
             submitted = SubmittedCustomerData.objects.filter(identifier=error.identifier).first()
             
+            # Get the customer code either from the error or submitted data
+            customer_code = error.customer_code or (submitted.customer_code if submitted else '')
+            
             # Use the error translator utility to get the friendly message
             from .error_translator_utils import process_dashboard_error
             friendly_message = process_dashboard_error(error.error_code, error.message)
             
-            # Store the friendly message directly on the error object
+            # Store the friendly message and customer code on the error object
             error.friendly_message = friendly_message
+            error.customer_code = customer_code
                 
             unique_errors[key] = {
                 'error': error,
-                'submitted': submitted
+                'submitted': submitted,
+                'customer_code': customer_code  # Add customer code to the context
             }
     
     # Convert to list for template
@@ -694,3 +806,338 @@ def login_view(request):
         form = AuthenticationForm()
     
     return render(request, 'login.html', {'form': form})
+
+@login_required
+def validate_xml_file(request):
+    """Validate XML file using comprehensive BOT rules and error checks"""
+    if request.method == 'POST' and request.FILES.get('xml_file'):
+        xml_file = request.FILES['xml_file']
+        validation_errors = []
+        
+        try:
+            content = xml_file.read()
+            if content.startswith(b'\xef\xbb\xbf'):
+                content = content[3:]
+            xml_content = content.decode('utf-8-sig')
+
+            root = ET.fromstring(xml_content)
+            ns = {'ns': 'http://cb4.creditinfosolutions.com/BatchUploader/Batch'}
+
+            for command in root.findall('.//ns:Command', ns):
+                identifier = command.attrib.get('identifier', '')
+                
+                # Validate StorInstalment structure
+                stor_instalment = command.find('.//ns:Cis.CB4.Projects.TZ.BOT.Body.Products.StorInstalment', ns)
+                if stor_instalment is None:
+                    validation_errors.append(f"Invalid command structure in Command {identifier}")
+                    continue
+
+                # Validate Instalment section
+                instalment = stor_instalment.find('ns:Instalment', ns)
+                if instalment is not None:
+                    # Required Instalment fields
+                    instalment_fields = {
+                        'InstalmentCount': ('int', None),
+                        'InstalmentType': ('lookup', 'InstalmentType.Fixed'),
+                        'OutstandingAmount': ('decimal', None),
+                        'PeriodicityOfPayments': ('lookup', None),
+                        'TypeOfInstalmentLoan': ('lookup', 'TypeOfInstalmentLoan.BusinessLoan'),
+                        'CurrencyOfLoan': ('lookup', 'Currency.TZS'),
+                        'TotalLoanAmount': ('decimal', None),
+                        'NegativeStatusOfLoan': ('lookup', 'NegativeStatusOfLoan.NoNegativeStatus'),
+                        'PhaseOfLoan': ('lookup', 'PhaseOfLoan.Existing'),
+                        'RescheduledLoan': ('lookup', 'Bool.False')
+                    }
+
+                    for field, (field_type, expected_value) in instalment_fields.items():
+                        elem = instalment.find(f'ns:{field}', ns)
+                        if elem is None or not elem.text:
+                            validation_errors.append(f"Missing {field} in Command {identifier}")
+                        elif expected_value and elem.text != expected_value:
+                            validation_errors.append(f"Invalid {field} value in Command {identifier}")
+
+                    # Validate ContractDates
+                    contract_dates = instalment.find('ns:ContractDates', ns)
+                    if contract_dates is not None:
+                        for date_field in ['Start', 'ExpectedEnd', 'RealEnd']:
+                            date_elem = contract_dates.find(f'ns:{date_field}', ns)
+                            if date_elem is None or not elem.text:
+                                validation_errors.append(f"Missing {date_field} date in Command {identifier}")
+
+                # Validate ConnectedSubject
+                connected_subject = instalment.find('.//ns:ConnectedSubject', ns)
+                if connected_subject is not None:
+                    company = connected_subject.find('.//ns:Company', ns)
+                    if company is not None:
+                        # Validate CompanyData
+                        company_data = company.find('ns:CompanyData', ns)
+                        if company_data is not None:
+                            company_fields = {
+                                'EstablishmentDate': ('datetime', None),
+                                'LegalForm': ('lookup', 'LegalForm.GovernmentalInstitution'),
+                                'RegistrationNumber': ('string', None),
+                                'TradeName': ('string', None)
+                            }
+
+                            for field, (field_type, expected_value) in company_fields.items():
+                                elem = company_data.find(f'ns:{field}', ns)
+                                if elem is None or not elem.text:
+                                    validation_errors.append(f"Missing {field} in Command {identifier}")
+                                elif expected_value and elem.text != expected_value:
+                                    validation_errors.append(f"Invalid {field} value in Command {identifier}")
+
+                        # Validate AddressesCompany
+                        addresses = company.find('.//ns:AddressesCompany/ns:Registration', ns)
+                        if addresses is not None:
+                            for field in ['Country', 'District', 'Region']:
+                                elem = addresses.find(f'ns:{field}', ns)
+                                if elem is None or not elem.text:
+                                    validation_errors.append(f"Missing {field} in Command {identifier}")
+
+                        # Validate ContactsCompany
+                        contacts = company.find('ns:ContactsCompany', ns)
+                        if contacts is not None:
+                            phone = contacts.find('ns:CellularPhone', ns)
+                            if phone is None or not phone.text:
+                                validation_errors.append(f"Missing Phone Number in Command {identifier}")
+
+                        # Validate CustomerCode
+                        customer_code = company.findtext('ns:CustomerCode', '', ns)
+                        if not customer_code.strip():
+                            validation_errors.append(f"Missing CustomerCode in Command {identifier}")
+
+                # Validate StorHeader
+                header = stor_instalment.find('ns:StorHeader', ns)
+                if header is None:
+                    validation_errors.append(f"Missing StorHeader in Command {identifier}")
+                else:
+                    for field in ['Source', 'StoreTo', 'Identifier']:
+                        elem = header.find(f'ns:{field}', ns)
+                        if elem is None or not elem.text:
+                            validation_errors.append(f"Missing {field} in StorHeader for Command {identifier}")
+
+            validation_results = {
+                'is_valid': len(validation_errors) == 0,
+                'errors': validation_errors,
+                'error_count': len(validation_errors),
+                'filename': xml_file.name
+            }
+
+            if validation_errors:
+                messages.error(request, f"Found {len(validation_errors)} validation errors.")
+            else:
+                messages.success(request, "XML file is valid and ready for BOT submission.")
+
+        except ET.ParseError as parse_error:
+            validation_errors.append(f"Invalid XML structure: {str(parse_error)}")
+        except Exception as general_error:
+            validation_errors.append(f"Validation error: {str(general_error)}")
+        finally:
+            return render(request, 'upload_combined.html', {'validation_results': validation_results})
+
+    return redirect('upload_both_files')
+
+@login_required
+def resolve_all_batch(request):
+    if request.method == 'POST':
+        batch_id = request.POST.get('batch_id')
+        print(f"Debug - Processing batch: {batch_id}")
+        
+        try:
+            with transaction.atomic():
+                # First try to get the batch record
+                batch = BatchHistory.objects.filter(batch_identifier=batch_id).first()
+                if not batch:
+                    messages.error(request, f"Batch {batch_id} not found")
+                    return redirect('batch_history')
+                
+                print(f"Debug - Found batch: {batch.batch_identifier}")
+                
+                # Get all pending errors for this batch
+                pending_errors = CustomerError.objects.filter(
+                    batch=batch,
+                    status='pending'  # Make sure this matches your status choices
+                )
+                
+                print(f"Debug - Found {pending_errors.count()} pending errors")
+                
+                if pending_errors.exists():
+                    now = timezone.now()
+                    
+                    # Update all pending errors
+                    update_count = pending_errors.update(
+                        status='resolved',  # Make sure this matches your status choices
+                        resolved_at=now,
+                        resolved_by=request.user
+                    )
+                    
+                    # Update batch status
+                    batch.status = 'resolved'
+                    batch.resolved_date = now
+                    batch.save()
+                    
+                    messages.success(
+                        request, 
+                        f"Successfully resolved {update_count} errors from batch {batch_id}"
+                    )
+                    print(f"Debug - Updated {update_count} errors to resolved")
+                else:
+                    # Get all errors for this batch to check their statuses
+                    all_errors = CustomerError.objects.filter(batch=batch)
+                    status_counts = all_errors.values('status').annotate(
+                        count=models.Count('status')
+                    )
+                    
+                    print(f"Debug - Error status distribution: {list(status_counts)}")
+                    
+                    if all_errors.exists():
+                        messages.warning(
+                            request,
+                            f"Found {all_errors.count()} errors but none are pending. "
+                            f"Current status distribution: "
+                            f"{', '.join([f'{s['status']}: {s['count']}' for s in status_counts])}"
+                        )
+                    else:
+                        messages.warning(request, f"No errors found for batch {batch_id}")
+
+        except Exception as e:
+            messages.error(request, f"Error resolving batch: {str(e)}")
+            import traceback
+            print(f"Debug - Exception: {traceback.format_exc()}")
+
+    return redirect('batch_history')
+
+@login_required
+def batch_history(request):
+    batches = BatchHistory.objects.all().order_by('-upload_date')
+    return render(request, 'batch_history.html', {'batches': batches})
+
+@login_required
+def upload_report(request):
+    """Generate a CSV report of errors with optional batch filtering"""
+    response = HttpResponse(
+        content_type='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="error_report_{datetime.now().strftime("%Y%m%d_%H%M")}.csv"'},
+    )
+    
+    writer = csv.writer(response)
+    writer.writerow([
+        'Batch ID',
+        'Identifier',
+        'Customer Name',
+        'Customer Code',
+        'Error Code',
+        'Error Message',
+        'Status',
+        'Upload Date',
+        'Resolved Date'
+    ])
+    
+    # Get batch filter if present
+    batch_id = request.GET.get('batch')
+    errors = CustomerError.objects.all()
+    
+    if batch_id:
+        errors = errors.filter(xml_file_name__contains(batch_id))
+    
+    # Write error data
+    for error in errors:
+        submitted_data = SubmittedCustomerData.objects.filter(identifier=error.identifier).first()
+        writer.writerow([
+            error.xml_file_name,
+            error.identifier,
+            submitted_data.trade_name if submitted_data else error.customer_name,
+            submitted_data.customer_code if submitted_data else error.customer_code,
+            error.error_code,
+            error.message,
+            error.get_status_display(),
+            error.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            error.resolved_at.strftime('%Y-%m-%d %H:%M:%S') if error.resolved_at else '-'
+        ])
+    
+    return response
+
+@login_required
+def delete_batch(request, batch_id):
+    if request.method == 'POST':
+        try:
+            with transaction.atomic():
+                # Fix: Change the filter to use correct lookup syntax
+                CustomerError.objects.filter(
+                    identifier__contains=batch_id
+                ).delete()
+                
+                deleted = BatchHistory.objects.filter(
+                    batch_identifier=batch_id
+                ).delete()
+                
+                if deleted[0] > 0:
+                    messages.success(request, f"Successfully deleted batch {batch_id}")
+                else:
+                    messages.warning(request, "Batch not found")
+                
+        except Exception as e:
+            messages.error(request, f"Error deleting batch: {str(e)}")
+    
+    return redirect('batch_history')
+
+@login_required
+def extract_clean_entries(request, batch_id, format_type='xml'):
+    try:
+        # Get batch and its associated errors
+        batch = BatchHistory.objects.filter(batch_identifier=batch_id).first()
+        if not batch:
+            messages.error(request, f"Batch {batch_id} not found")
+            return redirect('batch_history')
+
+        # Get clean entries from CustomerError model
+        clean_entries = CustomerError.objects.filter(
+            batch=batch,
+            status='ok'
+        )
+
+        if not clean_entries.exists():
+            messages.warning(request, "No clean entries found in this batch")
+            return redirect('batch_history')
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        if format_type.lower() == 'csv':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="clean_{batch_id}_{timestamp}.csv"'
+            
+            writer = csv.writer(response)
+            writer.writerow(['Identifier', 'Customer Name', 'Account Number', 'Amount', 'National ID'])
+            
+            for entry in clean_entries:
+                writer.writerow([
+                    entry.identifier,
+                    entry.customer_name,
+                    entry.account_number,
+                    entry.amount,
+                    entry.national_id
+                ])
+            return response
+        else:
+            # Create XML structure
+            root = ET.Element('customers')
+            for entry in clean_entries:
+                customer = ET.SubElement(root, 'customer')
+                ET.SubElement(customer, 'identifier').text = entry.identifier
+                ET.SubElement(customer, 'customerName').text = entry.customer_name
+                ET.SubElement(customer, 'accountNumber').text = entry.account_number
+                ET.SubElement(customer, 'amount').text = str(entry.amount)
+                ET.SubElement(customer, 'nationalId').text = entry.national_id
+                ET.SubElement(customer, 'customerCode').text = entry.customer_code
+
+            xml_str = ET.tostring(root, encoding='unicode', method='xml')
+            response = HttpResponse(
+                xml_str, 
+                content_type='application/xml',
+                headers={'Content-Disposition': f'attachment; filename="clean_{batch_id}_{timestamp}.xml"'}
+            )
+            return response
+
+    except Exception as e:
+        messages.error(request, f"Error extracting clean entries: {str(e)}")
+        return redirect('batch_history')

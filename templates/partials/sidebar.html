@@ -38,8 +38,8 @@
         <div id="collapseTwo" class="collapse" aria-labelledby="headingTwo" data-parent="#accordionSidebar">
             <div class="bg-white py-2 collapse-inner rounded">
                 <h6 class="collapse-header">Error Status:</h6>
-                <a class="collapse-item" href="#">Pending Errors</a>
-                <a class="collapse-item" href="#">Resolved Erros</a>
+                <a class="collapse-item {% if request.GET.status == 'pending' %}active{% endif %}" href="?status=pending">Pending Errors</a>
+                <a class="collapse-item {% if request.GET.status == 'resolved' %}active{% endif %}" href="?status=resolved">Resolved Errors</a>
             </div>
         </div>
     </li>
@@ -55,8 +55,8 @@
             data-parent="#accordionSidebar">
             <div class="bg-white py-2 collapse-inner rounded">
                 <h6 class="collapse-header">Batch History:</h6>
-                <a class="collapse-item" href="#">Current Errors</a>
-                <a class="collapse-item" href="#">Previously Errors</a>
+                <a class="collapse-item active recent-errors-trigger" href="#">Current Errors</a>
+                <a class="collapse-item" href="{% url 'batch_history' %}">Previously Errors</a>
             </div>
         </div>
     </li>
@@ -79,8 +79,8 @@
         <div id="collapsePages" class="collapse {% if 'documentation' in request.path %}show{% endif %}" aria-labelledby="headingPages" data-parent="#accordionSidebar">
             <div class="bg-white py-2 collapse-inner rounded">
                 <h6 class="collapse-header">Desk Details:</h6>
-               <a class="collapse-item active" href="{% url 'documentation' %}">Documentation</a>
-                <a class="collapse-item" href="#">Generate Report</a>
+                <a class="collapse-item {% if 'documentation' in request.path %}active{% endif %}" href="{% url 'documentation' %}">Documentation</a>
+                <a class="collapse-item" href="#" id="sidebarGenerateReport">Generate Report</a>
                 <div class="collapse-divider"></div>
             </div>
         </div>

@@ -2,103 +2,142 @@
 
 {% load static %}
 
-{% block title %}Dashboard{% endblock %}
+{% block title %}BOT XML Validator Dashboard{% endblock %}
 
 {% block content %}
 <!-- Page Heading -->
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
-    <h1 class="h3 mb-0 text-gray-800">Dashboard</h1>
-    <form action="{% url 'upload_report' %}" method="post" enctype="multipart/form-data">
-        {% csrf_token %}
-        <input type="file" name="xml_file" accept=".xml" style="display: none;" id="fileInput" onchange="this.form.submit()">
-        <button type="button" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm" onclick="document.getElementById('fileInput').click()">
-            <i class="fas fa-upload fa-sm text-white-50"></i> Upload XML Report
-        </button>
-    </form>
-    <a href="{% url 'error_dashboard' %}" class="btn btn-warning btn-sm mt-3">
-        View Uploaded Errors
-    </a>
+    <h1 class="h3 mb-0 text-gray-800">XML Validation Dashboard</h1>
+    <div class="d-flex">
+        <form action="{% url 'validate_xml' %}" method="post" enctype="multipart/form-data" class="mr-2">
+            {% csrf_token %}
+            <input type="file" name="xml_file" accept=".xml" style="display: none;" id="validationInput" onchange="this.form.submit()">
+            <button type="button" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm" onclick="document.getElementById('validationInput').click()">
+                <i class="fas fa-check-circle fa-sm text-white-50"></i> Validate XML
+            </button>
+        </form>
+        <form action="{% url 'upload_report' %}" method="post" enctype="multipart/form-data" class="mr-2">
+            {% csrf_token %}
+            <input type="file" name="xml_file" accept=".xml" style="display: none;" id="uploadInput" onchange="this.form.submit()">
+            <button type="button" class="d-none d-sm-inline-block btn btn-sm btn-success shadow-sm" onclick="document.getElementById('uploadInput').click()">
+                <i class="fas fa-upload fa-sm text-white-50"></i> Upload Report
+            </button>
+        </form>
+        <a href="{% url 'error_dashboard' %}" class="btn btn-warning btn-sm shadow-sm">
+            <i class="fas fa-exclamation-circle fa-sm text-white-50"></i> View Errors
+        </a>
+    </div>
 </div>
 
-<!-- Content Row -->
+<!-- Validation Results Section -->
+{% if validation_results %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold {% if validation_results.is_valid %}text-success{% else %}text-danger{% endif %}">
+                    Validation Results
+                </h6>
+                <span class="badge badge-{% if validation_results.is_valid %}success{% else %}danger{% endif %}">
+                    {% if validation_results.is_valid %}Valid{% else %}Invalid{% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                {% if validation_results.is_valid %}
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle"></i> XML file is valid according to BOT rules
+                    </div>
+                {% else %}
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i> XML validation failed
+                        <ul class="mt-2 mb-0">
+                            {% for error in validation_results.errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Statistics Cards -->
 <div class="row">
-    <!-- Earnings (Monthly) Card Example -->
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card border-left-primary shadow h-100 py-2">
             <div class="card-body">
                 <div class="row no-gutters align-items-center">
                     <div class="col mr-2">
                         <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                            Earnings (Monthly)</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">$40,000</div>
+                            Total Validations</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_validations }}</div>
                     </div>
                     <div class="col-auto">
-                        <i class="fas fa-calendar fa-2x text-gray-300"></i>
+                        <i class="fas fa-file-code fa-2x text-gray-300"></i>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Earnings (Monthly) Card Example -->
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card border-left-success shadow h-100 py-2">
             <div class="card-body">
                 <div class="row no-gutters align-items-center">
                     <div class="col mr-2">
                         <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                            Earnings (Annual)</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">$215,000</div>
+                            Valid Files</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.valid_files }}</div>
                     </div>
                     <div class="col-auto">
-                        <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                        <i class="fas fa-check-circle fa-2x text-gray-300"></i>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Earnings (Monthly) Card Example -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-danger shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                            Files with Errors</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.error_files }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-exclamation-circle fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card border-left-info shadow h-100 py-2">
             <div class="card-body">
                 <div class="row no-gutters align-items-center">
                     <div class="col mr-2">
-                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Tasks
-                        </div>
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Success Rate</div>
                         <div class="row no-gutters align-items-center">
                             <div class="col-auto">
-                                <div class="h5 mb-0 mr-3 font-weight-bold text-gray-800">50%</div>
+                                <div class="h5 mb-0 mr-3 font-weight-bold text-gray-800">{{ stats.success_rate }}%</div>
                             </div>
                             <div class="col">
                                 <div class="progress progress-sm mr-2">
                                     <div class="progress-bar bg-info" role="progressbar"
-                                        style="width: 50%" aria-valuenow="50" aria-valuemin="0"
-                                        aria-valuemax="100"></div>
+                                        style="width: {{ stats.success_rate }}%" aria-valuenow="{{ stats.success_rate }}" 
+                                        aria-valuemin="0" aria-valuemax="100"></div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="col-auto">
-                        <i class="fas fa-clipboard-list fa-2x text-gray-300"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Pending Requests Card Example -->
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card border-left-warning shadow h-100 py-2">
-            <div class="card-body">
-                <div class="row no-gutters align-items-center">
-                    <div class="col mr-2">
-                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                            Pending Requests</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">18</div>
-                    </div>
-                    <div class="col-auto">
-                        <i class="fas fa-comments fa-2x text-gray-300"></i>
+                        <i class="fas fa-percentage fa-2x text-gray-300"></i>
                     </div>
                 </div>
             </div>
@@ -106,51 +145,41 @@
     </div>
 </div>
 
-<!-- Content Row -->
+<!-- Recent Validations Table -->
 <div class="card shadow mb-4">
     <div class="card-header py-3">
-        <h6 class="m-0 font-weight-bold text-primary">DataTables Example</h6>
+        <h6 class="m-0 font-weight-bold text-primary">Recent Validation History</h6>
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+            <table class="table table-bordered" id="validationTable" width="100%" cellspacing="0">
                 <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Position</th>
-                        <th>Office</th>
-                        <th>Age</th>
-                        <th>Start date</th>
-                        <th>Salary</th>
+                        <th>Filename</th>
+                        <th>Validation Date</th>
+                        <th>Status</th>
+                        <th>Error Count</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
-                <tfoot>
-                    <tr>
-                        <th>Name</th>
-                        <th>Position</th>
-                        <th>Office</th>
-                        <th>Age</th>
-                        <th>Start date</th>
-                        <th>Salary</th>
-                    </tr>
-                </tfoot>
                 <tbody>
+                    {% for validation in recent_validations %}
                     <tr>
-                        <td>Tiger Nixon</td>
-                        <td>System Architect</td>
-                        <td>Edinburgh</td>
-                        <td>61</td>
-                        <td>2011/04/25</td>
-                        <td>$320,800</td>
+                        <td>{{ validation.filename }}</td>
+                        <td>{{ validation.date }}</td>
+                        <td>
+                            <span class="badge badge-{% if validation.is_valid %}success{% else %}danger{% endif %}">
+                                {% if validation.is_valid %}Valid{% else %}Invalid{% endif %}
+                            </span>
+                        </td>
+                        <td>{{ validation.error_count }}</td>
+                        <td>
+                            <a href="{% url 'validation_detail' validation.id %}" class="btn btn-info btn-sm">
+                                <i class="fas fa-eye"></i> View Details
+                            </a>
+                        </td>
                     </tr>
-                    <tr>
-                        <td>Donna Snider</td>
-                        <td>Customer Support</td>
-                        <td>New York</td>
-                        <td>27</td>
-                        <td>2011/01/25</td>
-                        <td>$112,000</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -160,12 +189,15 @@
 
 {% block extra_scripts %}
 <!-- Page level plugins -->
-<script src="{% static 'vendor/chart.js/Chart.min.js' %}"></script>
 <script src="{% static 'vendor/datatables/jquery.dataTables.min.js' %}"></script>
 <script src="{% static 'vendor/datatables/dataTables.bootstrap4.min.js' %}"></script>
 
-<!-- Page level custom scripts -->
-<script src="{% static 'js/demo/chart-area-demo.js' %}"></script>
-<script src="{% static 'js/demo/chart-pie-demo.js' %}"></script>
-<script src="{% static 'js/demo/datatables-demo.js' %}"></script>
+<!-- Initialize DataTable -->
+<script>
+$(document).ready(function() {
+    $('#validationTable').DataTable({
+        order: [[1, 'desc']]
+    });
+});
+</script>
 {% endblock %}

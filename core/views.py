@@ -1064,7 +1064,7 @@ def upload_report(request):
     writer.writerow([
         'Batch ID',
         'Identifier',
-        'Customer Name',
+        'Customer Name',  # This will contain company name or birth surname
         'Customer Code',
         'Error Code',
         'Error Message',
@@ -1083,10 +1083,16 @@ def upload_report(request):
     # Write error data
     for error in errors:
         submitted_data = SubmittedCustomerData.objects.filter(identifier=error.identifier).first()
+        
+        # First try to get trade name, if not available use birth surname
+        customer_name = (submitted_data.trade_name if submitted_data and submitted_data.trade_name 
+                        else (submitted_data.birth_surname if submitted_data and submitted_data.birth_surname 
+                        else error.customer_name))
+        
         writer.writerow([
             error.xml_file_name,
             error.identifier,
-            submitted_data.trade_name if submitted_data else error.customer_name,
+            customer_name,  # Modified to use the fallback logic
             submitted_data.customer_code if submitted_data else error.customer_code,
             error.error_code,
             error.message,

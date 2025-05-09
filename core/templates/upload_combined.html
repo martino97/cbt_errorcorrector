@@ -1,0 +1,22 @@
+<form method="post" enctype="multipart/form-data" class="mb-4">
+    {% csrf_token %}
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label for="customer_file" class="form-label">Upload Customer XML</label>
+                <input type="file" class="form-control" id="customer_file" name="customer_file" accept=".xml" required>
+                <small class="text-muted">Select the personal XML file containing customer data</small>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label for="error_file" class="form-label">Upload BOT Report XML</label>
+                <input type="file" class="form-control" id="error_file" name="error_file" accept=".xml" required>
+                <small class="text-muted">Select the BOT report XML file</small>
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">
+        <i class="fas fa-upload"></i> Upload and Compare Files
+    </button>
+</form>

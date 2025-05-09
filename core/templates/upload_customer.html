@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Upload Customer Data</h1>
+    </div>
+
+    {% if messages %}
+    <div class="messages mb-4">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Upload XML Files</h6>
+            <div class="text-muted small">Batch Format Example: TZ06310411</div>
+        </div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data" class="needs-validation" novalidate>
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="customer_file" class="form-label">Customer XML File</label>
+                            <input type="file" 
+                                   class="form-control" 
+                                   id="customer_file" 
+                                   name="customer_file" 
+                                   accept=".xml"
+                                   required>
+                            <div class="form-text">
+                                Upload XML containing:
+                                <ul class="mt-1">
+                                    <li>BirthSurname (Customer Name)</li>
+                                    <li>CustomerCode</li>
+                                    <li>TotalLoanAmount</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="bot_report" class="form-label">BOT Report XML</label>
+                            <input type="file" 
+                                   class="form-control" 
+                                   id="bot_report" 
+                                   name="bot_report" 
+                                   accept=".xml"
+                                   required>
+                            <div class="form-text">
+                                Must have matching batch identifier in Header:
+                                <code>&lt;Header&gt;&lt;Identifier&gt;TZ06310411&lt;/Identifier&gt;&lt;/Header&gt;</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-upload me-2"></i> Upload and Process Files
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add file format help section -->
+    <div class="card shadow mt-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">File Format Requirements</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="font-weight-bold">Customer XML Format:</h6>
+                    <pre class="bg-light p-3 rounded"><code>&lt;ns:Batch xmlns:ns="http://cb4.creditinfosolutions.com/BatchUploader/Batch"&gt;
+    &lt;ns:Header&gt;
+        &lt;ns:Identifier&gt;TZ06310411&lt;/ns:Identifier&gt;
+    &lt;/ns:Header&gt;
+    ...
+&lt;/ns:Batch&gt;</code></pre>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="font-weight-bold">BOT Report Format:</h6>
+                    <pre class="bg-light p-3 rounded"><code>&lt;Batch&gt;
+    &lt;Header&gt;
+        &lt;Identifier&gt;TZ06310411&lt;/Identifier&gt;
+    &lt;/Header&gt;
+    ...
+&lt;/Batch&gt;</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// Add file validation
+document.querySelector('form').addEventListener('submit', function(event) {
+    const customerFile = document.getElementById('customer_file').files[0];
+    const botReport = document.getElementById('bot_report').files[0];
+    
+    if (!customerFile || !botReport) {
+        event.preventDefault();
+        alert('Please select both XML files');
+        return;
+    }
+    
+    if (!customerFile.name.endsWith('.xml') || !botReport.name.endsWith('.xml')) {
+        event.preventDefault();
+        alert('Please select valid XML files');
+        return;
+    }
+});
+</script>
+{% endblock %}
+{% endblock %}

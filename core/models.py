@@ -51,13 +51,17 @@ class CustomerError(models.Model):
     # Core fields
     batch = models.ForeignKey(BatchHistory, on_delete=models.CASCADE, related_name='errors')
     identifier = models.CharField(max_length=100)
-    customer_name = models.CharField(max_length=255)
+    customer_name = models.CharField(max_length=255, null=True, blank=True)
     account_number = models.CharField(max_length=100)
     amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     national_id = models.CharField(max_length=100, blank=True)
-    customer_code = models.CharField(max_length=50, blank=True)
+    customer_code = models.CharField(max_length=100, null=True, blank=True)
+    phone = models.CharField(max_length=20, null=True, blank=True)
+    full_error_code = models.CharField(max_length=100, null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
+    loan_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     error_code = models.CharField(max_length=50)
-    message = models.TextField(blank=True)
+    message = models.TextField()
     line_number = models.IntegerField(null=True, blank=True)
     
     # Status fields
@@ -131,6 +135,7 @@ class SubmittedCustomerData(models.Model):
     total_loan_amount = models.DecimalField(max_digits=20, decimal_places=4)
     submitted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    birth_surname = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
         return f"{self.identifier} - {self.trade_name}"

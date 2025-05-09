@@ -20,6 +20,7 @@ urlpatterns = [
     
     # File upload path
     path('upload/', views.upload_both_files, name='upload_both_files'),
+    path('upload-customer/', views.upload_customer_xml, name='upload_customer'),
     
     # Original dashboard path (if you still need it)
     path('dashboard/', login_required(views.error_dashboard), name='error_dashboard'),

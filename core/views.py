@@ -59,7 +59,39 @@ def get_batch_identifier(xml_content, is_customer_file=False):
 
 @login_required
 def error_dashboard(request):
-    return render(request, 'dashboard.html')
+    # Get batch filter if present
+    batch_id = request.GET.get('batch')
+    
+    # Get errors with related batch and customer data
+    errors = CustomerError.objects.select_related('batch').all()
+    
+    if batch_id:
+        errors = errors.filter(batch__batch_identifier=batch_id)
+    
+    # Get customer data for each error
+    for error in errors:
+        # Get customer data from SubmittedCustomerData
+        customer_data = SubmittedCustomerData.objects.filter(
+            identifier=error.identifier
+        ).first()
+        
+        if customer_data:
+            error.customer_name = customer_data.birth_surname
+            error.customer_code = customer_data.customer_code
+            error.phone = customer_data.phone
+            error.loan_amount = customer_data.total_loan_amount
+        else:
+            error.customer_name = error.customer_details.get('birth_surname', '')
+            error.customer_code = error.customer_details.get('customer_code', '')
+            error.phone = error.customer_details.get('phone', '')
+            error.loan_amount = error.customer_details.get('loan_amount', '0.00')
+    
+    context = {
+        'errors': errors,
+        'batch_id': batch_id
+    }
+    
+    return render(request, 'error_dashboard.html', context)
 
 def register_user(request):
     if request.user.is_authenticated:
@@ -170,11 +202,14 @@ def upload_both_files(request):
                     if company is None:
                         continue
 
+                    birth_surname = company.findtext('ns:BirthSurname', default='', namespaces=ns)
                     trade_name = company.findtext('ns:CompanyData/ns:TradeName', default='', namespaces=ns)
                     registration_number = company.findtext('ns:CompanyData/ns:RegistrationNumber', default='', namespaces=ns)
                     customer_code = company.findtext('ns:CustomerCode', default='', namespaces=ns)
                     phone = company.findtext('ns:ContactsCompany/ns:CellularPhone', default='', namespaces=ns)
                     amount = command.findtext('.//ns:TotalLoanAmount', default='0', namespaces=ns)
+
+                    print(f"Saving customer: {identifier}, {birth_surname}, {customer_code}, {phone}, {amount}")
 
                     SubmittedCustomerData.objects.update_or_create(
                         identifier=identifier,
@@ -183,6 +218,7 @@ def upload_both_files(request):
                             'registration_number': registration_number,
                             'customer_code': customer_code,
                             'phone': phone,
+                            'birth_surname': birth_surname,
                             'total_loan_amount': float(amount),
                             'submitted_by': request.user,
                         }
@@ -269,8 +305,8 @@ def upload_both_files(request):
                             error = CustomerError.objects.create(
                                 batch=batch_history,  # Use the BatchHistory object created earlier
                                 identifier=identifier,
-                                customer_name=customer_name,
-                                customer_code=customer_code,  # Add customer code here
+                                customer_name=submitted_data.birth_surname if submitted_data and submitted_data.birth_surname else customer_name,
+                                customer_code=submitted_data.customer_code if submitted_data else customer_code,
                                 account_number=account_number,
                                 amount=amount,
                                 national_id=national_id,
@@ -281,7 +317,11 @@ def upload_both_files(request):
                                 status='pending',
                                 uploaded_by=request.user,
                                 xml_file_name=error_file.name,
-                                customer_details=customer_details
+                                customer_details={
+                                    **customer_details,
+                                    'birth_surname': submitted_data.birth_surname if submitted_data else '',
+                                    'phone': submitted_data.phone if submitted_data else '',
+                                }
                             )
                             # Store friendly message in customer_details_json
                             if hasattr(error, 'customer_details_json'):
@@ -1141,3 +1181,327 @@ def extract_clean_entries(request, batch_id, format_type='xml'):
     except Exception as e:
         messages.error(request, f"Error extracting clean entries: {str(e)}")
         return redirect('batch_history')
+
+def format_batch_id(identifier):
+    """Format batch identifier to match required format (e.g., TZ06310411)"""
+    # Remove any spaces or special characters
+    clean_id = ''.join(filter(str.isalnum, identifier))
+    # Ensure starts with TZ and is 10 characters
+    if not clean_id.upper().startswith('TZ'):
+        clean_id = 'TZ' + clean_id
+    return clean_id[:10].upper()
+
+def validate_personal_data(data):
+    """Validate personal data fields and return any errors"""
+    errors = []
+    
+    # Required fields validation
+    if not data.get('birth_surname'):
+        errors.append({
+            'error_code': 'E_BIRTHSURNAME_MISSING',
+            'message': 'Birth Surname is required',
+            'severity': 'high'
+        })
+    
+    if not data.get('customer_code'):
+        errors.append({
+            'error_code': 'E_CUSTOMERCODE_MISSING',
+            'message': 'Customer Code is required',
+            'severity': 'high'
+        })
+    
+    phone = data.get('phone', '')
+    if not phone:
+        errors.append({
+            'error_code': 'E_PHONE_MISSING',
+            'message': 'Phone number is required',
+            'severity': 'high'
+        })
+    elif not phone.startswith('+255'):
+        errors.append({
+            'error_code': 'E_PHONE_FORMAT',
+            'message': 'Phone number must start with +255',
+            'severity': 'medium'
+        })
+
+    try:
+        loan_amount = float(data.get('loan_amount', '0'))
+        if loan_amount <= 0:
+            errors.append({
+                'error_code': 'E_LOAN_AMOUNT_INVALID',
+                'message': 'Loan amount must be greater than 0',
+                'severity': 'high'
+            })
+    except ValueError:
+        errors.append({
+            'error_code': 'E_LOAN_AMOUNT_FORMAT',
+            'message': 'Invalid loan amount format',
+            'severity': 'high'
+        })
+    
+    return errors
+
+def get_header_identifier(xml_content):
+    """Extract identifier from XML header with proper namespace handling"""
+    try:
+        root = ET.fromstring(xml_content.decode('utf-8'))
+        
+        # Try with namespace first
+        ns = {'ns': 'http://cb4.creditinfosolutions.com/BatchUploader/Batch'}
+        identifier = root.findtext('.//ns:Header/ns:Identifier', '', ns)
+        
+        # If not found, try without namespace
+        if not identifier:
+            identifier = root.findtext('.//Header/Identifier', '')
+        
+        return identifier.strip() if identifier else None
+    except Exception as e:
+        print(f"Error extracting header identifier: {e}")
+        return None
+
+def get_batch_identifier(content, is_customer_file=False):
+    """Extract batch identifier from XML content based on file type"""
+    try:
+        # Handle UTF-8 BOM if present
+        if content.startswith(b'\xef\xbb\xbf'):
+            content = content[3:]
+            
+        root = ET.fromstring(content.decode('utf-8'))
+        
+        if is_customer_file:
+            # Customer XML with namespace
+            ns = {'ns': 'http://cb4.creditinfosolutions.com/BatchUploader/Batch'}
+            
+            # Try different paths for customer file
+            paths = [
+                './/ns:Header/ns:Identifier',  # With namespace
+                './/Header/Identifier',        # Without namespace
+            ]
+            
+            for path in paths:
+                try:
+                    identifier = root.findtext(path, '', namespaces=ns if 'ns:' in path else None)
+                    if identifier:
+                        return identifier.strip()
+                except:
+                    continue
+        else:
+            # BOT report XML - try multiple possible paths
+            paths = [
+                './/Header/Identifier',
+                './/BatchResponse/Header/Identifier',
+                './/Header/BatchId'
+            ]
+            
+            for path in paths:
+                try:
+                    identifier = root.findtext(path)
+                    if identifier:
+                        return identifier.strip()
+                except:
+                    continue
+        
+        return None
+        
+    except Exception as e:
+        print(f"XML Parsing Error: {str(e)}")
+        print(f"Content start: {content[:200]}")  # Debug first 200 chars
+        return None
+@login_required
+def upload_customer_xml(request):
+    if request.method == 'POST':
+        customer_file = request.FILES.get('customer_file')
+        bot_report = request.FILES.get('bot_report')
+        customer_count = 0
+        error_count = 0
+        current_errors = []
+        
+        # Add this block to extract batch ID
+        customer_batch_id = None  # Initialize batch ID
+        # Check batch identifiers
+        if customer_file and bot_report:
+            try:
+                # Read customer file content
+                customer_content = customer_file.read()
+                if customer_content.startswith(b'\xef\xbb\xbf'):
+                    customer_content = customer_content[3:]
+                    
+                # Read bot report content
+                bot_content = bot_report.read()
+                if bot_content.startswith(b'\xef\xbb\xbf'):
+                    bot_content = bot_content[3:]
+
+                # Get batch identifiers
+                customer_batch_id = get_batch_identifier(customer_content, is_customer_file=True)
+                bot_batch_id = get_batch_identifier(bot_content)
+
+                # Validate batch identifiers
+                if not customer_batch_id:
+                    messages.error(request, "Could not find BatchIdentifier in customer file Header block")
+                    return render(request, 'upload_customer.html')
+                    
+                if not bot_batch_id:
+                    messages.error(request, "Could not find BatchIdentifier in BOT report Header block")
+                    return render(request, 'upload_customer.html')
+
+                # Compare identifiers
+                if customer_batch_id != bot_batch_id:
+                    messages.error(request, 
+                        f"Batch identifiers do not match!\n"
+                        f"Customer File: {customer_batch_id}\n"
+                        f"BOT Report: {bot_batch_id}")
+                    return render(request, 'upload_customer.html')
+
+                # Reset file pointers
+                customer_file.seek(0)
+                bot_report.seek(0)
+
+            except Exception as e:
+                messages.error(request, f"Error checking batch identifiers: {str(e)}")
+                return render(request, 'upload_customer.html')
+
+        # ...rest of your existing code continues...
+
+        # Clear session data
+        if 'current_upload_errors' in request.session:
+            del request.session['current_upload_errors']
+
+        try:
+            # Process customer XML
+            customer_content = customer_file.read()
+            if customer_content.startswith(b'\xef\xbb\xbf'):
+                customer_content = customer_content[3:]
+            
+            customer_root = ET.fromstring(customer_content.decode('utf-8'))
+            ns = {'ns': 'http://cb4.creditinfosolutions.com/BatchUploader/Batch'}
+
+            # Process customer data and store it
+            for command in customer_root.findall('.//ns:Command', ns):
+                identifier = command.attrib.get('identifier', '')
+                company = command.find('.//ns:Company', ns)
+                if company is None:
+                    continue
+
+                birth_surname = company.findtext('ns:BirthSurname', default='', namespaces=ns)
+                customer_code = company.findtext('ns:CustomerCode', default='', namespaces=ns)
+                phone = company.findtext('.//ns:CellularPhone', default='', namespaces=ns)
+                amount = command.findtext('.//ns:TotalLoanAmount', default='0', namespaces=ns)
+
+                # Store customer data
+                SubmittedCustomerData.objects.update_or_create(
+                    identifier=identifier,
+                    defaults={
+                        'birth_surname': birth_surname,
+                        'customer_code': customer_code,
+                        'phone': phone,
+                        'total_loan_amount': float(amount),
+                        'submitted_by': request.user,
+                    }
+                )
+                customer_count += 1
+
+            # Process BOT report XML
+            bot_content = bot_report.read()
+            if bot_content.startswith(b'\xef\xbb\xbf'):
+                bot_content = bot_content[3:]
+            
+            bot_root = ET.fromstring(bot_content.decode('utf-8'))
+            
+            # Create batch history
+            batch_history = BatchHistory.objects.create(
+                batch_identifier=customer_batch_id,
+                error_count=0,
+                uploaded_by=request.user,
+                filename=bot_report.name
+            )
+
+            # Process errors from BOT report
+            for command in bot_root.findall('.//Command'):
+                identifier = command.attrib.get('identifier', '')
+                
+                for ex in command.findall('Exception'):
+                    error_code = ex.findtext('ErrorCode') or 'UNKNOWN'
+                    message = ''
+                    line_number = ''
+                    customer_details = {}
+                    
+                    # Extract error details from Parameters
+                    params_element = ex.find('Parameters')
+                    if params_element is not None:
+                        for param in params_element.findall('parameter'):
+                            key = param.findtext('Key')
+                            val = param.findtext('Value') or ''
+                            if key:
+                                if key == 'Message':
+                                    message = val
+                                elif key == 'LineNumber':
+                                    line_number = val
+                                customer_details[key] = val
+
+                    # Set severity based on error code
+                    severity = 'medium'
+                    if error_code.startswith('E'):
+                        severity = 'high'
+                    elif error_code.startswith('W'):
+                        severity = 'low'
+                    elif error_code.startswith('C'):
+                        severity = 'critical'
+
+                    # Get submitted customer data
+                    submitted_data = SubmittedCustomerData.objects.filter(identifier=identifier).first()
+
+                    # Create error record
+                    error = CustomerError.objects.create(
+                        batch=batch_history,
+                        identifier=identifier,
+                        customer_name=submitted_data.birth_surname if submitted_data else '',
+                        customer_code=submitted_data.customer_code if submitted_data else '',
+                        phone=submitted_data.phone if submitted_data else '',
+                        error_code=error_code,
+                        message=message,
+                        line_number=line_number,
+                        severity=severity,
+                        status='pending',
+                        uploaded_by=request.user,
+                        xml_file_name=bot_report.name,
+                        customer_details={
+                            **customer_details,
+                            'birth_surname': submitted_data.birth_surname if submitted_data else '',
+                            'phone': submitted_data.phone if submitted_data else '',
+                        }
+                    )
+                    error_count += 1
+                    current_errors.append(error.id)
+
+            # Update batch history
+            batch_history.error_count = error_count
+            batch_history.save()
+
+            # Update session data
+            request.session['current_upload_errors'] = current_errors
+            request.session['recent_upload'] = {
+                'timestamp': timezone.now().isoformat(),
+                'error_count': error_count,
+                'customer_count': customer_count,
+                'error_ids': current_errors,
+                'filename': bot_report.name
+            }
+
+            # Create recent upload record
+            RecentUpload.objects.create(
+                user=request.user,
+                filename=bot_report.name,
+                customer_count=customer_count,
+                error_count=error_count,
+                error_ids=current_errors,
+                is_active=True
+            )
+
+            messages.success(request, f"Upload completed. {customer_count} customer records and {error_count} errors saved.")
+            return redirect('error_dashboard')
+
+        except Exception as e:
+            messages.error(request, f"Error processing files: {str(e)}")
+            return redirect('upload_customer')
+
+    return render(request, 'upload_customer.html')

@@ -21,11 +21,11 @@ from datetime import datetime
 from django.db import transaction
 from django.db.models import Q  # Add this import
 from django.conf import settings  # Add this import
+from .xml_validator import XMLValidator
 
 # Create this function to handle friendly error messages
 def get_friendly_error_message(error_code, message=""):
     """Returns a user-friendly message based on the error code or message."""
-    friendly_messages = {
         'E001': 'Customer information is incomplete. Please provide all required details.',
         'E002': 'The account number format is invalid. Please check and try again.',
         'E003': 'National ID format is incorrect. Please verify and resubmit.',

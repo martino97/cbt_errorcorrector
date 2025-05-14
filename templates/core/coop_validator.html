@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card shadow my-4">
+        <div class="card-header bg-primary text-white">
+            <h4><i class="fas fa-file-code me-2"></i>Coop XML Validator</h4>
+        </div>
+        
+        <!-- How it works info card -->
+        <div class="card-body bg-light mb-3">
+            <div class="alert alert-info mb-0">
+                <h5><i class="fas fa-info-circle me-2"></i>How it works:</h5>
+                <p>This tool validates and processes your XML files by:</p>
+                <ol>
+                    <li>Matching identifiers between source and error XML files</li>
+                    <li>Filtering only commands with "ResultCode.OK" status</li>
+                    <li>Generating a clean BOT-compatible XML file ready for submission</li>
+                </ol>
+            </div>
+        </div>
+        
+        <!-- Main form section -->
+        <div class="card-body">
+            {% if messages %}
+            <div class="alert alert-dismissible {% if messages.tags == 'error' %}alert-danger{% else %}alert-success{% endif %}">
+                {% for message in messages %}
+                    <p>{{ message }}</p>
+                {% endfor %}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endif %}
+            
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                {{ form.non_field_errors }}
+                
+                <div class="row">
+                    <!-- Source XML File Upload -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100 border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-file-upload me-2"></i>Original XML File
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted mb-3">Upload the original XML file containing the commands.</p>
+                                
+                                {{ form.source_file.errors }}
+                                <div class="custom-file">
+                                    <input type="file" name="source_file" class="form-control" id="id_source_file" accept=".xml" required>
+                                    <label class="btn btn-outline-primary mt-2" for="id_source_file">Browse</label>
+                                </div>
+                                
+                                <div class="selected-file mt-2" id="source-file-name">
+                                    <small class="text-muted">No file selected</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Error XML File Upload -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100 border-danger">
+                            <div class="card-header bg-danger text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>BOT Report File
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted mb-3">Upload the BOT report file containing result codes (XML or TXT).</p>
+                                
+                                {{ form.error_file.errors }}
+                                <div class="custom-file">
+                                    <input type="file" name="error_file" class="form-control" id="id_error_file" accept=".xml,.txt" required>
+                                    <label class="btn btn-outline-danger mt-2" for="id_error_file">Browse</label>
+                                </div>
+                                
+                                <div class="selected-file mt-2" id="error-file-name">
+                                    <small class="text-muted">No file selected</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2 col-md-6 mx-auto mt-3">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-check-circle me-2"></i>Validate XML Files
+                    </button>
+                </div>
+            </form>
+            
+            {% if corrections %}
+            <div class="mt-5">
+                <div class="alert {% if corrections.error %}alert-warning{% else %}alert-success{% endif %}">
+                    <h5>
+                        <i class="fas {% if corrections.error %}fa-exclamation-circle{% else %}fa-check-circle{% endif %} me-2"></i>
+                        Validation Results
+                    </h5>
+                    {% if corrections.error %}
+                        <p>{{ corrections.error }}</p>
+                    {% else %}
+                        <p>Batch ID: {{ batch.batch_identifier }}</p>
+                        <p>Total Input Commands: {{ corrections.total_input_commands }}</p>
+                        <p>Total Clean Commands: {{ corrections.total_clean_commands }}</p>
+                        <p>Clean Identifiers: {{ corrections.clean_identifiers|join:", " }}</p>
+                    {% endif %}
+                </div>
+                
+                {% if batch.clean_xml_file %}
+                <div class="card mt-3 shadow-sm">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-code me-2"></i>Clean XML Output</h5>
+                        <a href="{% url 'download_clean_xml' batch_id=batch.id %}" class="btn btn-success">
+                            <i class="fas fa-download me-2"></i>Download Clean XML
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        <div class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;">
+                            <pre><code class="language-xml">{{ clean_xml_content|safe }}</code></pre>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+// Display selected filenames
+function updateFileName(inputId, displayId) {
+    const fileInput = document.getElementById(inputId);
+    const fileName = fileInput.files[0] ? fileInput.files[0].name : 'No file selected';
+    document.getElementById(displayId).innerHTML = `<small class="text-primary"><i class="fas fa-check-circle me-1"></i>${fileName}</small>`;
+}
+
+// Trigger file input click programmatically
+function triggerFileInput(inputId) {
+    const fileInput = document.getElementById(inputId);
+    if (fileInput) {
+        fileInput.click();
+    }
+}
+
+document.getElementById('id_source_file').addEventListener('change', function() {
+    updateFileName('id_source_file', 'source-file-name');
+});
+
+document.getElementById('id_error_file').addEventListener('change', function() {
+    updateFileName('id_error_file', 'error-file-name');
+});
+
+// Add click handlers for Browse labels
+document.querySelector('label[for="id_source_file"]').addEventListener('click', function(e) {
+    triggerFileInput('id_source_file');
+});
+
+document.querySelector('label[for="id_error_file"]').addEventListener('click', function(e) {
+    triggerFileInput('id_error_file');
+});
+
+// Initialize Prism.js for XML syntax highlighting (if used)
+if (window.Prism) {
+    Prism.highlightAll();
+}
+</script>
+{% endblock %}

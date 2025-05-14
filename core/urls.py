@@ -40,4 +40,9 @@ urlpatterns = [
     path('extract-clean/<str:batch_id>/<str:format_type>/', 
          views.extract_clean_entries, 
          name='extract_clean_entries'),
-]
+
+    path('coop-validator/', views.coop_validator, name='coop_validator'),
+    # path('download-clean-xml/<int:batch_id>/', views.download_clean_xml, name='download_clean_xml'),
+    path('download_clean_xml/<int:batch_id>/', views.download_clean_xml, name='download_clean_xml'),
+    path('upload_report/', views.upload_report, name='upload_report'),
+   ]

@@ -21,11 +21,18 @@ from datetime import datetime
 from django.db import transaction
 from django.db.models import Q  # Add this import
 from django.conf import settings  # Add this import
-from .xml_validator import XMLValidator
+from django.core.files.storage import FileSystemStorage
+import xml.etree.ElementTree as ET
+import os
+import logging
+# from .xml_validator import XMLValidator
 
 # Create this function to handle friendly error messages
 def get_friendly_error_message(error_code, message=""):
+    
     """Returns a user-friendly message based on the error code or message."""
+    # Define a mapping of error codes to friendly messages
+    friendly_messages = {
         'E001': 'Customer information is incomplete. Please provide all required details.',
         'E002': 'The account number format is invalid. Please check and try again.',
         'E003': 'National ID format is incorrect. Please verify and resubmit.',
@@ -1511,3 +1518,347 @@ def upload_customer_xml(request):
             return redirect('upload_customer')
 
     return render(request, 'upload_customer.html')
+
+from django.http import JsonResponse
+
+
+@login_required
+def validate_and_clean_xml(request):
+    if request.method == 'POST' and request.FILES.get('xml_file'):
+        try:
+            xml_file = request.FILES['xml_file']
+            content = xml_file.read()
+            
+            validator = BOTValidator()
+            clean_xml, corrections = validator.clean_xml(content)
+            
+            if clean_xml:
+                # Create response with clean XML file
+                response = HttpResponse(
+                    clean_xml,
+                    content_type='application/xml',
+                    headers={'Content-Disposition': 'attachment; filename="clean_bot_data.xml"'}
+                )
+                
+                # Store corrections in session for display
+                request.session['xml_corrections'] = corrections
+                
+                return response
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'No valid data remained after cleaning',
+                    'corrections': corrections
+                })
+
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+
+    return JsonResponse({
+        'success': False,
+        'error': 'Invalid request'
+    })
+# views.py
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.http import HttpResponse
+from django.core.files.storage import FileSystemStorage
+from django.utils import timezone
+from .bot_validator import BOTValidator
+from .models import BatchHistory
+import logging
+
+logger = logging.getLogger(__name__)
+
+@login_required
+def validate_xml_pair(request):
+    if request.method == 'POST':
+        customer_xml = request.FILES.get('customer_xml')
+        bot_report = request.FILES.get('bot_report')
+        
+        if not customer_xml or not bot_report:
+            messages.error(request, "Please provide both XML files")
+            return redirect('upload_customer')
+
+        try:
+            # Initialize validator
+            validator = BOTValidator()
+            
+            # Read both files
+            customer_content = customer_xml.read()
+            bot_content = bot_report.read()
+            
+            # Remove BOM if present
+            if customer_content.startswith(b'\xef\xbb\xbf'):
+                customer_content = customer_content[3:]
+            if bot_content.startswith(b'\xef\xbb\xbf'):
+                bot_content = bot_content[3:]
+
+            # Validate batch IDs match (assuming get_batch_identifier is defined)
+            customer_batch_id = get_batch_identifier(customer_content, is_customer_file=True)
+            bot_batch_id = get_batch_identifier(bot_content)
+            
+            if not customer_batch_id or not bot_batch_id:
+                raise ValueError("Could not find batch identifiers in one or both files")
+            
+            if customer_batch_id != bot_batch_id:
+                raise ValueError(f"Batch IDs do not match: {customer_batch_id} vs {bot_batch_id}")
+
+            # Process customer XML and BOT report
+            clean_xml, corrections = validator.process_xml_pair(customer_content, bot_content)
+
+            if clean_xml:
+                # Store corrections in session
+                request.session['xml_corrections'] = corrections
+                
+                # Save clean XML to FileSystemStorage
+                fs = FileSystemStorage()
+                timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+                clean_xml_name = f'clean_data_{timestamp}.xml'
+                clean_xml_path = fs.save(f'clean_xml/{clean_xml_name}', clean_xml)
+                
+                # Create or update BatchHistory
+                batch = BatchHistory.objects.create(
+                    batch_identifier=customer_batch_id,
+                    xml_file=customer_xml.name,
+                    report_file=bot_report.name,
+                    clean_xml_file=clean_xml_path,
+                    uploaded_by=request.user,
+                    filename=clean_xml_name,
+                    status='completed'
+                )
+
+                # Create response with clean XML
+                response = HttpResponse(
+                    clean_xml,
+                    content_type='application/xml',
+                    headers={
+                        'Content-Disposition': f'attachment; filename="{clean_xml_name}"'
+                    }
+                )
+                return response
+            else:
+                messages.warning(request, "No valid data remained after cleaning")
+                return render(request, 'validate_xml.html', {
+                    'corrections': corrections
+                })
+
+        except Exception as e:
+            logger.error(f"Error processing files: {str(e)}")
+            messages.error(request, f"Error processing files: {str(e)}")
+            return redirect('upload_customer')
+
+    return render(request, 'validate_xml.html')
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.http import HttpResponse
+from django.core.files.storage import FileSystemStorage
+from django.utils import timezone
+from .bot_validator import BOTValidator
+from .models import BatchHistory, CustomerError, SubmittedCustomerData
+from .forms import XMLUploadForm
+import logging
+import csv
+from datetime import datetime
+from io import BytesIO  # Added import
+
+logger = logging.getLogger(__name__)
+
+@login_required
+def coop_validator(request):
+    """Handle Coop Validator view"""
+    form = XMLUploadForm()
+    if request.method == 'POST':
+        logger.debug(f"POST request received. request.FILES: {request.FILES}")
+        form = XMLUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            source_file = form.cleaned_data['source_file']
+            error_file = form.cleaned_data['error_file']
+            logger.debug(f"Form valid. Source file: {source_file}, Error file: {error_file}")
+            
+            try:
+                # Validate file extensions
+                if not error_file.name.lower().endswith(('.xml', '.txt')):
+                    messages.error(request, 'BOT report must be an XML or TXT file.')
+                    return render(request, 'core/coop_validator.html', {'form': form})
+                
+                if not source_file.name.lower().endswith('.xml'):
+                    messages.error(request, 'Original file must be an XML file.')
+                    return render(request, 'core/coop_validator.html', {'form': form})
+                
+                # Process files
+                batch = process_validation_files(request, error_file, source_file)
+                
+                if batch:
+                    # Process XML pair to generate clean XML
+                    validator = BOTValidator()
+                    with open(batch.xml_file.path, 'rb') as xml_file, open(batch.report_file.path, 'rb') as report_file:
+                        customer_content = xml_file.read()
+                        bot_content = report_file.read()
+                        # Remove BOM if present
+                        if customer_content.startswith(b'\xef\xbb\xbf'):
+                            customer_content = customer_content[3:]
+                            logger.debug("Removed UTF-8 BOM from customer XML")
+                        if bot_content.startswith(b'\xef\xbb\xbf'):
+                            bot_content = bot_content[3:]
+                            logger.debug("Removed UTF-8 BOM from BOT report")
+                        
+                        # Log input types for debugging
+                        logger.debug("customer_content type: %s, bot_content type: %s", 
+                                     type(customer_content), type(bot_content))
+                        
+                        # Pass batch object instead of batch_identifier
+                        clean_xml, corrections = validator.process_xml_pair(
+                            customer_content,
+                            bot_content,
+                            batch=batch
+                        )
+                    
+                    if clean_xml:
+                        fs = FileSystemStorage()
+                        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+                        clean_xml_name = f'clean_data_{timestamp}.xml'
+                        # Wrap clean_xml in BytesIO for FileSystemStorage
+                        clean_xml_file = BytesIO(clean_xml)
+                        logger.debug("Wrapped clean_xml in BytesIO for storage")
+                        clean_xml_path = fs.save(f'clean_xml/{clean_xml_name}', clean_xml_file)
+                        batch.clean_xml_file = clean_xml_path
+                        batch.status = 'completed'
+                        batch.save()
+                        request.session['xml_corrections'] = corrections
+                        messages.success(request, 'Files validated successfully!')
+                        
+                        # Read clean XML content for preview
+                        with open(fs.path(clean_xml_path), 'r', encoding='utf-8') as f:
+                            clean_xml_content = f.read()
+                        
+                        return render(request, 'core/coop_validator.html', {
+                            'form': XMLUploadForm(),
+                            'corrections': corrections,
+                            'batch': batch,
+                            'clean_xml_content': clean_xml_content
+                        })
+                    else:
+                        batch.status = 'failed'
+                        batch.save()
+                        messages.warning(request, corrections.get('error', 'No valid data remained after cleaning.'))
+                        return render(request, 'core/coop_validator.html', {
+                            'form': XMLUploadForm(),
+                            'corrections': corrections,
+                            'batch': batch
+                        })
+                else:
+                    messages.error(request, 'Error processing files. Please try again.')
+                    return render(request, 'core/coop_validator.html', {'form': form})
+                
+            except Exception as e:
+                logger.error(f'Unexpected error in coop_validator: {str(e)}', exc_info=True)
+                messages.error(request, f'Error: {str(e)}')
+                return render(request, 'core/coop_validator.html', {'form': form})
+        else:
+            logger.debug(f"Form invalid. Errors: {form.errors}")
+            messages.error(request, 'Please upload both required files. Errors: ' + str(form.errors))
+            return render(request, 'core/coop_validator.html', {'form': form})
+    
+    return render(request, 'core/coop_validator.html', {'form': form})
+@login_required
+def upload_report(request):
+    """Generate a CSV report of errors from the most recently uploaded dataset"""
+    response = HttpResponse(
+        content_type='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="error_report_{datetime.now().strftime("%Y%m%d_%H%M")}.csv"'},
+    )
+    
+    writer = csv.writer(response)
+    writer.writerow([
+        'Batch ID',
+        'Identifier',
+        'Customer Name',  # This will contain company name or birth surname
+        'Customer Code',
+        'Error Code',
+        'Error Message',
+        'Status',
+        'Upload Date',
+        'Resolved Date'
+    ])
+    
+    # Get the most recent batch using upload_date
+    try:
+        latest_batch = BatchHistory.objects.latest('upload_date')
+        # Filter CustomerError using the batch ForeignKey
+        errors = CustomerError.objects.filter(batch=latest_batch)
+        if not errors.exists():
+            logger.warning(f"No errors found for batch {latest_batch.batch_identifier}")
+            writer.writerow([f'No errors found for batch {latest_batch.batch_identifier}'])
+    except BatchHistory.DoesNotExist:
+        errors = CustomerError.objects.none()
+        logger.warning("No batches found in BatchHistory")
+        writer.writerow(['No recent uploads found'])
+    
+    # Write error data
+    for error in errors:
+        submitted_data = SubmittedCustomerData.objects.filter(identifier=error.identifier).first()
+        
+        # First try to get trade name, if not available use birth surname
+        customer_name = (submitted_data.trade_name if submitted_data and submitted_data.trade_name 
+                        else (submitted_data.birth_surname if submitted_data and submitted_data.birth_surname 
+                        else error.customer_name))
+        
+        writer.writerow([
+            error.batch.batch_identifier,  # Use batch.batch_identifier instead of xml_file_name
+            error.identifier,
+            customer_name,
+            submitted_data.customer_code if submitted_data else error.customer_code,
+            error.error_code,
+            error.message,
+            error.get_status_display(),
+            error.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            error.resolved_at.strftime('%Y-%m-%d %H:%M:%S') if error.resolved_at else '-'
+        ])
+    
+    return response
+def process_validation_files(request, error_file, source_file):
+    try:
+        fs = FileSystemStorage()
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+        error_file_name = f'bot_report_{timestamp}_{error_file.name}'
+        source_file_name = f'original_{timestamp}_{source_file.name}'
+        error_file_path = fs.save(f'bot_reports/{error_file_name}', error_file)
+        source_file_path = fs.save(f'xml_uploads/{source_file_name}', source_file)
+        batch = BatchHistory.objects.create(
+            batch_identifier=timestamp,
+            xml_file=source_file_path,
+            report_file=error_file_path,
+            uploaded_by=request.user,
+            filename=source_file.name,
+            status='pending'
+        )
+        return batch
+    except Exception as e:
+        logger.error(f'Error processing validation files: {str(e)}')
+        return None
+
+@login_required
+def download_clean_xml(request, batch_id):
+    try:
+        batch = BatchHistory.objects.get(id=batch_id)
+        fs = FileSystemStorage()
+        if not batch.clean_xml_file:
+            messages.error(request, "No clean XML file available for this batch.")
+            return redirect('coop_validator')
+        with fs.open(batch.clean_xml_file) as xml_file:
+            response = HttpResponse(xml_file.read(), content_type='application/xml')
+            response['Content-Disposition'] = f'attachment; filename=clean_{batch.filename}'
+            return response
+    except BatchHistory.DoesNotExist:
+        messages.error(request, "Batch not found.")
+        return redirect('coop_validator')
+    except Exception as e:
+        logger.error(f"Error downloading clean XML: {str(e)}")
+        messages.error(request, f"Error downloading file: {str(e)}")
+        return redirect('coop_validator')

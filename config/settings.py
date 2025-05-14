@@ -134,3 +134,19 @@ SESSION_COOKIE_AGE = 180  # 3 minutes in seconds
 SESSION_SAVE_EVERY_REQUEST = True  # Reset timeout on each request
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
+# config/settings.py
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        '': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+    },
+}

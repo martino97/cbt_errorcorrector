@@ -64,6 +64,8 @@
     <!-- Divider -->
     <hr class="sidebar-divider">
 
+    
+
     <!-- Heading -->
     <div class="sidebar-heading">
         Helper
@@ -81,6 +83,8 @@
                 <h6 class="collapse-header">Desk Details:</h6>
                 <a class="collapse-item {% if 'documentation' in request.path %}active{% endif %}" href="{% url 'documentation' %}">Documentation</a>
                 <a class="collapse-item" href="#" id="sidebarGenerateReport">Generate Report</a>
+                 <a class="collapse-item {% if 'documentation' in request.path %}active{% endif %}" href="{% url 'coop_validator' %}">Coop Validator</a>
+                    
                 <div class="collapse-divider"></div>
             </div>
         </div>

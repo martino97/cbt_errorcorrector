@@ -12,6 +12,7 @@ class BatchHistory(models.Model):
     error_count = models.IntegerField(default=0)
     xml_file = models.FileField(upload_to='xml_uploads/')
     report_file = models.FileField(upload_to='bot_reports/', null=True, blank=True)
+    clean_xml_file = models.CharField(max_length=255, null=True, blank=True)  # Added field
     status = models.CharField(
         max_length=20,
         choices=(

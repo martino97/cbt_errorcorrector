@@ -1862,3 +1862,5 @@ def download_clean_xml(request, batch_id):
         logger.error(f"Error downloading clean XML: {str(e)}")
         messages.error(request, f"Error downloading file: {str(e)}")
         return redirect('coop_validator')
+    
+    

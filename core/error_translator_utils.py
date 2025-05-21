@@ -64,7 +64,7 @@ REGEX_TRANSLATIONS = {
     r'[Z]{1}[0-9]{10}': "Zanzibar registration number must start with Z followed by 10 digits",
     
     # Postal code
-    r'[0-9]{5}': "Postal code must be 5 digits",
+    r'[0-9]{5}': "National ID number has 20 digits where last digit is checksum, format is YYYYMMDD-00000-00000-1/2/3C Regular expression",
     
     # Citizen ID pattern from screenshot
     r'[0-9]{1}[1-9][0-9]{10}': "Citizen ID must be in the correct format"

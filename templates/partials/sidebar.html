@@ -1,12 +1,15 @@
 <!-- Sidebar -->
+ {% load static %}
 <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
 
     <!-- Sidebar - Brand -->
-    <a class="sidebar-brand d-flex align-items-center justify-content-center" href="{% url 'error_dashboard' %}">
-        <div class="sidebar-brand-icon rotate-n-15">
-            <i class="fas fa-laugh-wink"></i>
+   <a class="sidebar-brand d-flex align-items-center justify-content-center" href="{% url 'error_dashboard' %}">
+    <div class="rotate-n-15">
+        <div style="background-color: white; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden; box-sizing: border-box;">
+            <img src="{% static 'img/logo.png' %}" width="40" height="40" style="max-width: 80%; max-height: 80%; object-fit: contain;">
         </div>
-        <div class="sidebar-brand-text mx-3">COOP XML CHECKER</div>
+    </div>
+     <div class="sidebar-brand-text mx-3">COOP XML CHECKER</div>
     </a>
 
     <!-- Divider -->
@@ -49,7 +52,7 @@
         <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseUtilities"
             aria-expanded="true" aria-controls="collapseUtilities">
             <i class="fas fa-fw fa-calendar"></i>
-            <span>History</span>
+            <span>Batch History</span>
         </a>
         <div id="collapseUtilities" class="collapse" aria-labelledby="headingUtilities"
             data-parent="#accordionSidebar">
